@@ -43,6 +43,7 @@ export const PREDEFINED_COLORS = ['#ffffff', '#f8f9fa', '#e9ecef', '#212529'] as
 
 export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: { onExport?: () => void; onImport?: () => void; onReset?: () => void; onExportImage?: () => void }) {
   const [isOpen, setIsOpen] = React.useState(false);
+  const [isResetDialogOpen, setIsResetDialogOpen] = React.useState(false);
   const { theme, setTheme } = useTheme();
   const { settings, setSettings } = useCanvasSettings();
 
@@ -99,7 +100,7 @@ export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: {
           <div className="text-xs font-semibold text-muted-foreground mb-2 px-2 uppercase tracking-wider">
             Canvas
           </div>
-          <AlertDialog>
+          <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
             <AlertDialogTrigger
               render={
                 <Button variant="ghost" className="w-full justify-start text-sm text-destructive hover:text-destructive hover:bg-destructive/10">
@@ -116,8 +117,14 @@ export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={onReset} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                <AlertDialogCancel onClick={() => setIsResetDialogOpen(false)}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    setIsResetDialogOpen(false);
+                    onReset?.();
+                  }}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
                   Reset
                 </AlertDialogAction>
               </AlertDialogFooter>
