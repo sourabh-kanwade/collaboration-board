@@ -9,29 +9,33 @@ change.
 
 ## Current Goal
 
-- Implement editor sidebar shell
+- Implement editor toolbar
 
 ## Completed
 
-- None yet.
+- Project Sidebar (`components/editor/project-sidebar.tsx`)
+- Editor Tool Bar (`components/editor/project-toolbar.tsx`) and Database auto-save
 
 ## In Progress
 
-- Project Sidebar (`components/editor/project-sidebar.tsx`)
+- Next feature unit
 
 ## Next Up
 
-- Editor Tool Bar
+- Real-Time Collaboration & Room Management
 
 ## Open Questions
 
-- [Any unresolved product or technical decisions]
+- Pan, Select, and Text tools are currently disabled on the toolbar. When should they be implemented?
+- Should we use a dynamic route (e.g. `/board/[id]`) for boards to support multiple distinct boards, since we currently use a single default board ID?
 
 ## Architecture Decisions
 
-- [Decisions made that affect the system design or
-  data model — include why the decision was made]
+- Setup Prisma ORM with a PostgreSQL database.
+- Created `Board` schema storing `elements` as JSON.
+- `app/page.tsx` converted to a React Server Component to fetch initial board state, passing data to `BoardClient` client component.
 
 ## Session Notes
 
-- [Context needed to resume work in the next session]
+- Run `npm run dev` to test the board.
+- Ensure a valid `DATABASE_URL` is set in `.env` for Prisma to connect to the Postgres database.
