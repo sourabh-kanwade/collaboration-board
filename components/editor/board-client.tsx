@@ -123,6 +123,7 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 
 		context.restore();
 	}, [elements, canvasSize, panOffset])
+
 	function handleMouseUp() {
 		setIsDrawing(false);
 		if (editingElementId !== null) return;
@@ -274,10 +275,7 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 		});
 	}
 
-	function handleMouseLeave() {
 
-		// setIsDrawing(false)
-	}
 
 	function handleTextBlur(e: React.FocusEvent<HTMLTextAreaElement>, id: number) {
 		const newText = e.target.value;
@@ -473,7 +471,7 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 					handleMouseUp={handleMouseUp}
 					handleMouseDown={handleMouseDown}
 					handleMouseMove={handleMouseMove}
-					handleMouseLeave={handleMouseLeave}
+
 				/>
 				{editingElementId && (
 					<TextEditorOverlay
@@ -559,13 +557,13 @@ function CanvasWrapper({
 	handleMouseUp,
 	handleMouseDown,
 	handleMouseMove,
-	handleMouseLeave,
+
 }: {
 	canvasRef: React.RefObject<HTMLCanvasElement | null>;
 	handleMouseUp: () => void;
 	handleMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => void;
 	handleMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => void;
-	handleMouseLeave: () => void;
+
 }) {
 	const { settings } = useCanvasSettings();
 
@@ -577,7 +575,7 @@ function CanvasWrapper({
 				onMouseUp={handleMouseUp}
 				onMouseDown={handleMouseDown}
 				onMouseMove={handleMouseMove}
-				onMouseLeave={handleMouseLeave}
+
 			/>
 		</div>
 	);

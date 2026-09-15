@@ -1,5 +1,5 @@
 import { getDefaultBoard } from "@/actions/board";
-import { BoardClient } from "./board-client";
+import { BoardClient } from "../components/editor/board-client";
 
 export const dynamic = 'force-dynamic';
 
