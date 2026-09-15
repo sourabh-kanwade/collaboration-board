@@ -4,6 +4,8 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useTheme } from "@/components/theme-provider";
 import {
   AlertDialog,
@@ -166,19 +168,36 @@ export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: {
               <HugeiconsIcon icon={GridIcon} className="mr-2 h-4 w-4 text-muted-foreground" />
               Background
             </div>
-            <div className="flex gap-2">
+            <ToggleGroup
+              value={[settings.background]}
+              onValueChange={(value) => {
+                if (value.length > 0) setSettings({ ...settings, background: value[0] })
+              }}
+              className="flex justify-start gap-2 mb-3"
+            >
               {['#ffffff', '#f8f9fa', '#e9ecef', '#212529'].map((color) => (
-                <button
+                <ToggleGroupItem
                   key={color}
+                  value={color}
                   className={cn(
-                    "w-6 h-6 rounded-full border shadow-sm",
+                    "w-6 h-6 rounded-full border shadow-sm shrink-0 p-0",
                     settings.background === color ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
                   )}
                   style={{ backgroundColor: color }}
-                  onClick={() => setSettings({ ...settings, background: color })}
                   title={color}
+                  aria-label={color}
                 />
               ))}
+            </ToggleGroup>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs text-muted-foreground font-medium">Hex</span>
+              <Input
+                type="text"
+                value={settings.background}
+                onChange={(e) => setSettings({ ...settings, background: e.target.value })}
+                className="h-8"
+                placeholder="#ffffff"
+              />
             </div>
           </div>
 
