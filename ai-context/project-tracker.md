@@ -16,6 +16,9 @@ change.
 - Project Sidebar (`components/editor/project-sidebar.tsx`)
 - Editor Tool Bar (`components/editor/project-toolbar.tsx`) and Database auto-save
 - Export Image functionality with preview modal (PNG, SVG, Clipboard) in `BoardClient` and `ProjectSidebar`
+- Canvas strokes and text now follow the selected light/dark theme, including SVG exports
+- Canvas background now follows the selected light/dark theme
+- Element strokes now automatically switch between black and white for contrast with the selected background
 
 ## In Progress
 

@@ -15,7 +15,7 @@ const CanvasSettingsContext = React.createContext<CanvasSettingsContextType | un
 
 export function CanvasSettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = React.useState<CanvasSettings>({
-    background: "#ffffff", // Default background
+    background: "#ffffff",
   });
 
   return (

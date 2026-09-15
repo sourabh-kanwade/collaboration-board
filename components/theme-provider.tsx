@@ -11,11 +11,13 @@ type ThemeProviderProps = {
 
 type ThemeProviderState = {
   theme: Theme;
+  resolvedTheme: "dark" | "light";
   setTheme: (theme: Theme) => void;
 };
 
 const initialState: ThemeProviderState = {
   theme: "system",
+  resolvedTheme: "light",
   setTheme: () => null,
 };
 
@@ -27,6 +29,17 @@ export function ThemeProvider({
   ...props
 }: ThemeProviderProps) {
   const [theme, setTheme] = React.useState<Theme>(defaultTheme);
+  const systemTheme = React.useSyncExternalStore<"dark" | "light">(
+    (onStoreChange) => {
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      const handleChange = () => onStoreChange();
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    },
+    () => window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+    () => "light"
+  );
+  const resolvedTheme = theme === "system" ? systemTheme : theme;
 
   React.useEffect(() => {
     const root = window.document.documentElement;
@@ -47,7 +60,7 @@ export function ThemeProvider({
   }, [theme]);
 
   return (
-    <ThemeProviderContext.Provider {...props} value={{ theme, setTheme }}>
+    <ThemeProviderContext.Provider {...props} value={{ theme, resolvedTheme, setTheme }}>
       {children}
     </ThemeProviderContext.Provider>
   );

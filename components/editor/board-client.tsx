@@ -6,6 +6,7 @@ import { CanvasSettingsProvider, useCanvasSettings } from "@/components/editor/c
 import { saveBoardState } from "@/actions/board";
 import { ExportImageDialog } from "@/components/editor/export-image-dialog";
 import { toast } from "@/components/ui/toast";
+import { useTheme } from "@/components/theme-provider";
 
 export type BoardElement = {
 	id: number;
@@ -13,6 +14,14 @@ export type BoardElement = {
 };
 
 export function BoardClient({ initialElements, boardId }: { initialElements: BoardElement[], boardId: string }) {
+	return (
+		<CanvasSettingsProvider>
+			<BoardEditor initialElements={initialElements} boardId={boardId} />
+		</CanvasSettingsProvider>
+	);
+}
+
+function BoardEditor({ initialElements, boardId }: { initialElements: BoardElement[], boardId: string }) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const [action, setAction] = useState<string[]>(["pencil"]);
 	const [elements, setElements] = useState<BoardElement[]>(initialElements);
@@ -24,6 +33,9 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 	const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
 	const [editingElementId, setEditingElementId] = useState<number | null>(null);
 	const [textInputValue, setTextInputValue] = useState("");
+	const { settings } = useCanvasSettings();
+	const { resolvedTheme } = useTheme();
+	const strokeColor = getContrastingStrokeColor(settings.background, resolvedTheme);
 
 	useLayoutEffect(() => {
 		const canvas = canvasRef.current;
@@ -62,7 +74,7 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 
 		elements.forEach(element => {
 			context.beginPath();
-			context.strokeStyle = 'black';
+			context.strokeStyle = strokeColor;
 			context.lineWidth = 2;
 			context.lineCap = "round";
 			context.lineJoin = "round";
@@ -103,7 +115,7 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 				context.stroke();
 			} else if (element.type === 'text') {
 				context.font = "24px sans-serif";
-				context.fillStyle = "black";
+				context.fillStyle = strokeColor;
 				context.textBaseline = "top";
 				if (element.text) {
 					const lines = element.text.split('\n');
@@ -124,7 +136,7 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 		});
 
 		context.restore();
-	}, [elements, canvasSize, panOffset])
+	}, [elements, canvasSize, panOffset, strokeColor])
 
 	function handleMouseUp() {
 		setIsDrawing(false);
@@ -384,7 +396,7 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 
 		elements.forEach(element => {
 			if (element.type === 'line') {
-				svgContent += `<line x1="${element.x1}" y1="${element.y1}" x2="${element.x2}" y2="${element.y2}" stroke="black" stroke-width="2" stroke-linecap="round" />`;
+				svgContent += `<line x1="${element.x1}" y1="${element.y1}" x2="${element.x2}" y2="${element.y2}" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" />`;
 			} else if (element.type === 'arrow') {
 				const headlen = 15;
 				const dx = element.x2 - element.x1;
@@ -395,26 +407,26 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 				const x4 = element.x2 - headlen * Math.cos(angle + Math.PI / 6);
 				const y4 = element.y2 - headlen * Math.sin(angle + Math.PI / 6);
 
-				svgContent += `<line x1="${element.x1}" y1="${element.y1}" x2="${element.x2}" y2="${element.y2}" stroke="black" stroke-width="2" stroke-linecap="round" />`;
-				svgContent += `<path d="M ${element.x2} ${element.y2} L ${x3} ${y3} L ${x4} ${y4} Z" fill="black" />`;
+				svgContent += `<line x1="${element.x1}" y1="${element.y1}" x2="${element.x2}" y2="${element.y2}" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" />`;
+				svgContent += `<path d="M ${element.x2} ${element.y2} L ${x3} ${y3} L ${x4} ${y4} Z" fill="${strokeColor}" />`;
 			} else if (element.type === 'square') {
 				const x = Math.min(element.x1, element.x2);
 				const y = Math.min(element.y1, element.y2);
 				const w = Math.abs(element.x2 - element.x1);
 				const h = Math.abs(element.y2 - element.y1);
-				svgContent += `<rect x="${x}" y="${y}" width="${w}" height="${h}" stroke="black" stroke-width="2" fill="none" />`;
+				svgContent += `<rect x="${x}" y="${y}" width="${w}" height="${h}" stroke="${strokeColor}" stroke-width="2" fill="none" />`;
 			} else if (element.type === 'diamond') {
 				const midX = (element.x1 + element.x2) / 2;
 				const midY = (element.y1 + element.y2) / 2;
-				svgContent += `<polygon points="${midX},${element.y1} ${element.x2},${midY} ${midX},${element.y2} ${element.x1},${midY}" stroke="black" stroke-width="2" fill="none" />`;
+				svgContent += `<polygon points="${midX},${element.y1} ${element.x2},${midY} ${midX},${element.y2} ${element.x1},${midY}" stroke="${strokeColor}" stroke-width="2" fill="none" />`;
 			} else if (element.type === 'circle') {
 				const radius = Math.sqrt(Math.pow(element.x2 - element.x1, 2) + Math.pow(element.y2 - element.y1, 2));
-				svgContent += `<circle cx="${element.x1}" cy="${element.y1}" r="${radius}" stroke="black" stroke-width="2" fill="none" />`;
+				svgContent += `<circle cx="${element.x1}" cy="${element.y1}" r="${radius}" stroke="${strokeColor}" stroke-width="2" fill="none" />`;
 			} else if (element.type === 'text') {
 				if (element.text) {
 					const lines = element.text.split('\n');
 					lines.forEach((line, index) => {
-						svgContent += `<text x="${element.x1}" y="${element.y1 + index * 24}" font-family="sans-serif" font-size="24px" fill="black" dominant-baseline="text-before-edge">${escapeXml(line)}</text>`;
+						svgContent += `<text x="${element.x1}" y="${element.y1 + index * 24}" font-family="sans-serif" font-size="24px" fill="${strokeColor}" dominant-baseline="text-before-edge">${escapeXml(line)}</text>`;
 					});
 				}
 			} else if (element.type === 'pencil') {
@@ -423,7 +435,7 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 					for (let i = 1; i < element.points.length; i++) {
 						d += ` L ${element.points[i].x} ${element.points[i].y}`;
 					}
-					svgContent += `<path d="${d}" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />`;
+					svgContent += `<path d="${d}" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />`;
 				}
 			}
 		});
@@ -465,36 +477,34 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 	}
 
 	return (
-		<CanvasSettingsProvider>
-			<div className="flex flex-col items-center font-sans h-screen relative">
-				<ProjectSidebar onExport={handleExport} onImport={handleImport} onReset={handleReset} onExportImage={handleExportImageRequest} />
-				<ProjectToolbar action={action} setAction={setAction} />
-				<CanvasWrapper
-					canvasRef={canvasRef}
-					handleMouseUp={handleMouseUp}
-					handleMouseDown={handleMouseDown}
-					handleMouseMove={handleMouseMove}
+		<div className="flex flex-col items-center font-sans h-screen relative">
+			<ProjectSidebar onExport={handleExport} onImport={handleImport} onReset={handleReset} onExportImage={handleExportImageRequest} />
+			<ProjectToolbar action={action} setAction={setAction} />
+			<CanvasWrapper
+				canvasRef={canvasRef}
+				handleMouseUp={handleMouseUp}
+				handleMouseDown={handleMouseDown}
+				handleMouseMove={handleMouseMove}
 
+			/>
+			{editingElementId && (
+				<TextEditorOverlay
+					element={elements.find(el => el.id === editingElementId)}
+					panOffset={panOffset}
+					textInputValue={textInputValue}
+					setTextInputValue={setTextInputValue}
+					onBlur={(e) => handleTextBlur(e, editingElementId)}
 				/>
-				{editingElementId && (
-					<TextEditorOverlay
-						element={elements.find(el => el.id === editingElementId)}
-						panOffset={panOffset}
-						textInputValue={textInputValue}
-						setTextInputValue={setTextInputValue}
-						onBlur={(e) => handleTextBlur(e, editingElementId)}
-					/>
-				)}
-				<ExportImageDialog
-					isOpen={isExportModalOpen}
-					onClose={() => setIsExportModalOpen(false)}
-					onExportPng={handleExportPng}
-					onExportSvg={handleExportSvg}
-					onCopyToClipboard={handleCopyToClipboard}
-					previewDataUrl={previewDataUrl}
-				/>
-			</div>
-		</CanvasSettingsProvider>
+			)}
+			<ExportImageDialog
+				isOpen={isExportModalOpen}
+				onClose={() => setIsExportModalOpen(false)}
+				onExportPng={handleExportPng}
+				onExportSvg={handleExportSvg}
+				onCopyToClipboard={handleCopyToClipboard}
+				previewDataUrl={previewDataUrl}
+			/>
+		</div>
 	);
 }
 
@@ -664,6 +674,23 @@ function escapeXml(unsafe: string) {
 			default: return c;
 		}
 	});
+}
+
+function getContrastingStrokeColor(background: string, resolvedTheme: "dark" | "light") {
+	const hex = background.trim().replace(/^#/, "");
+	const normalizedHex = hex.length === 3
+		? hex.split("").map((channel) => channel + channel).join("")
+		: hex;
+	if (!/^[\da-f]{6}$/i.test(normalizedHex)) {
+		return resolvedTheme === "dark" ? "#ffffff" : "#000000";
+	}
+
+	const red = parseInt(normalizedHex.slice(0, 2), 16);
+	const green = parseInt(normalizedHex.slice(2, 4), 16);
+	const blue = parseInt(normalizedHex.slice(4, 6), 16);
+	const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+
+	return luminance > 0.5 ? "#000000" : "#ffffff";
 }
 
 function isBoardElement(el: unknown): el is BoardElement {
