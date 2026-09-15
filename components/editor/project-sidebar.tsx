@@ -33,6 +33,14 @@ import {
   ComputerIcon
 } from "@hugeicons/core-free-icons";
 
+export const THEME_OPTIONS = [
+  { value: "light", icon: Sun01Icon },
+  { value: "dark", icon: Moon01Icon },
+  { value: "system", icon: ComputerIcon },
+] as const;
+
+export const PREDEFINED_COLORS = ['#ffffff', '#f8f9fa', '#e9ecef', '#212529'] as const;
+
 export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: { onExport?: () => void; onImport?: () => void; onReset?: () => void; onExportImage?: () => void }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const { theme, setTheme } = useTheme();
@@ -127,39 +135,20 @@ export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: {
               Theme
             </div>
             <ButtonGroup className="w-full">
-              <Button
-                variant={theme === "light" ? "secondary" : "outline"}
-                size="sm"
-                className={cn(
-                  "flex-1 h-8 text-xs px-0 shadow-none focus:z-10",
-                  theme === "light" ? "bg-secondary" : "hover:bg-accent"
-                )}
-                onClick={() => setTheme("light")}
-              >
-                <HugeiconsIcon icon={Sun01Icon} className="mr-1 w-3.5 h-3.5" />
-              </Button>
-              <Button
-                variant={theme === "dark" ? "secondary" : "outline"}
-                size="sm"
-                className={cn(
-                  "flex-1 h-8 text-xs px-0 shadow-none focus:z-10",
-                  theme === "dark" ? "bg-secondary" : "hover:bg-accent"
-                )}
-                onClick={() => setTheme("dark")}
-              >
-                <HugeiconsIcon icon={Moon01Icon} className="mr-1 w-3.5 h-3.5" />
-              </Button>
-              <Button
-                variant={theme === "system" ? "secondary" : "outline"}
-                size="sm"
-                className={cn(
-                  "flex-1 h-8 text-xs px-0 shadow-none focus:z-10",
-                  theme === "system" ? "bg-secondary" : "hover:bg-accent"
-                )}
-                onClick={() => setTheme("system")}
-              >
-                <HugeiconsIcon icon={ComputerIcon} className="mr-1 w-3.5 h-3.5" />
-              </Button>
+              {THEME_OPTIONS.map((option) => (
+                <Button
+                  key={option.value}
+                  variant={theme === option.value ? "secondary" : "outline"}
+                  size="sm"
+                  className={cn(
+                    "flex-1 h-8 text-xs px-0 shadow-none focus:z-10",
+                    theme === option.value ? "bg-secondary" : "hover:bg-accent"
+                  )}
+                  onClick={() => setTheme(option.value)}
+                >
+                  <HugeiconsIcon icon={option.icon} className="mr-1 w-3.5 h-3.5" />
+                </Button>
+              ))}
             </ButtonGroup>
           </div>
 
@@ -175,7 +164,7 @@ export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: {
               }}
               className="flex justify-start gap-2 mb-3"
             >
-              {['#ffffff', '#f8f9fa', '#e9ecef', '#212529'].map((color) => (
+              {PREDEFINED_COLORS.map((color) => (
                 <ToggleGroupItem
                   key={color}
                   value={color}
