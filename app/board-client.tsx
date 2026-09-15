@@ -4,6 +4,8 @@ import { ProjectSidebar } from "@/components/editor/project-sidebar";
 import { ProjectToolbar } from "@/components/editor/project-toolbar";
 import { CanvasSettingsProvider, useCanvasSettings } from "@/components/editor/canvas-settings-provider";
 import { saveBoardState } from "@/actions/board";
+import { ExportImageDialog } from "@/components/editor/export-image-dialog";
+import { toast } from "@/components/ui/toast";
 
 export type BoardElement = {
 	id: number;
@@ -347,10 +349,124 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 		});
 	}
 
+	const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+	const [previewDataUrl, setPreviewDataUrl] = useState("");
+
+	function handleExportImageRequest() {
+		if (elements.length === 0) {
+			toast.add({ title: "Cannot export empty canvas", type: "error" });
+			return;
+		}
+		const canvas = canvasRef.current;
+		if (canvas) {
+			const tempCanvas = document.createElement("canvas");
+			tempCanvas.width = canvas.width;
+			tempCanvas.height = canvas.height;
+			const ctx = tempCanvas.getContext("2d");
+			if (ctx) {
+				const bgColor = canvas.parentElement?.style.backgroundColor || "#ffffff";
+				ctx.fillStyle = bgColor;
+				ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+				ctx.drawImage(canvas, 0, 0);
+				setPreviewDataUrl(tempCanvas.toDataURL("image/png"));
+				setIsExportModalOpen(true);
+			}
+		}
+	}
+
+	function generateSvgContent() {
+		const canvas = canvasRef.current;
+		const bgColor = canvas?.parentElement?.style.backgroundColor || "#ffffff";
+		let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasSize.width}" height="${canvasSize.height}">`;
+		svgContent += `<rect width="100%" height="100%" fill="${bgColor}" />`;
+		svgContent += `<g transform="translate(${panOffset.x}, ${panOffset.y})">`;
+
+		elements.forEach(element => {
+			if (element.type === 'line') {
+				svgContent += `<line x1="${element.x1}" y1="${element.y1}" x2="${element.x2}" y2="${element.y2}" stroke="black" stroke-width="2" stroke-linecap="round" />`;
+			} else if (element.type === 'arrow') {
+				const headlen = 15;
+				const dx = element.x2 - element.x1;
+				const dy = element.y2 - element.y1;
+				const angle = Math.atan2(dy, dx);
+				const x3 = element.x2 - headlen * Math.cos(angle - Math.PI / 6);
+				const y3 = element.y2 - headlen * Math.sin(angle - Math.PI / 6);
+				const x4 = element.x2 - headlen * Math.cos(angle + Math.PI / 6);
+				const y4 = element.y2 - headlen * Math.sin(angle + Math.PI / 6);
+
+				svgContent += `<line x1="${element.x1}" y1="${element.y1}" x2="${element.x2}" y2="${element.y2}" stroke="black" stroke-width="2" stroke-linecap="round" />`;
+				svgContent += `<path d="M ${element.x2} ${element.y2} L ${x3} ${y3} L ${x4} ${y4} Z" fill="black" />`;
+			} else if (element.type === 'square') {
+				const x = Math.min(element.x1, element.x2);
+				const y = Math.min(element.y1, element.y2);
+				const w = Math.abs(element.x2 - element.x1);
+				const h = Math.abs(element.y2 - element.y1);
+				svgContent += `<rect x="${x}" y="${y}" width="${w}" height="${h}" stroke="black" stroke-width="2" fill="none" />`;
+			} else if (element.type === 'diamond') {
+				const midX = (element.x1 + element.x2) / 2;
+				const midY = (element.y1 + element.y2) / 2;
+				svgContent += `<polygon points="${midX},${element.y1} ${element.x2},${midY} ${midX},${element.y2} ${element.x1},${midY}" stroke="black" stroke-width="2" fill="none" />`;
+			} else if (element.type === 'circle') {
+				const radius = Math.sqrt(Math.pow(element.x2 - element.x1, 2) + Math.pow(element.y2 - element.y1, 2));
+				svgContent += `<circle cx="${element.x1}" cy="${element.y1}" r="${radius}" stroke="black" stroke-width="2" fill="none" />`;
+			} else if (element.type === 'text') {
+				if (element.text) {
+					const lines = element.text.split('\n');
+					lines.forEach((line, index) => {
+						svgContent += `<text x="${element.x1}" y="${element.y1 + index * 24}" font-family="sans-serif" font-size="24px" fill="black" dominant-baseline="text-before-edge">${line}</text>`;
+					});
+				}
+			} else if (element.type === 'pencil') {
+				if (element.points && element.points.length > 0) {
+					let d = `M ${element.points[0].x} ${element.points[0].y}`;
+					for (let i = 1; i < element.points.length; i++) {
+						d += ` L ${element.points[i].x} ${element.points[i].y}`;
+					}
+					svgContent += `<path d="${d}" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />`;
+				}
+			}
+		});
+
+		svgContent += `</g></svg>`;
+		return svgContent;
+	}
+
+	function handleExportPng() {
+		const a = document.createElement("a");
+		a.href = previewDataUrl;
+		a.download = `board-${boardId}.png`;
+		a.click();
+	}
+
+	function handleExportSvg() {
+		const svgContent = generateSvgContent();
+		const blob = new Blob([svgContent], { type: "image/svg+xml" });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `board-${boardId}.svg`;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
+
+	async function handleCopyToClipboard() {
+		try {
+			const response = await fetch(previewDataUrl);
+			const blob = await response.blob();
+			await navigator.clipboard.write([
+				new ClipboardItem({ [blob.type]: blob })
+			]);
+			toast.add({ title: "Copied to clipboard!", type: "success" });
+		} catch (err) {
+			console.error("Failed to copy", err);
+			toast.add({ title: "Failed to copy to clipboard. Ensure HTTPS or localhost.", type: "error" });
+		}
+	}
+
 	return (
 		<CanvasSettingsProvider>
 			<div className="flex flex-col items-center font-sans h-screen relative">
-				<ProjectSidebar onExport={handleExport} onImport={handleImport} onReset={handleReset} />
+				<ProjectSidebar onExport={handleExport} onImport={handleImport} onReset={handleReset} onExportImage={handleExportImageRequest} />
 				<ProjectToolbar action={action} setAction={setAction} />
 				<CanvasWrapper
 					canvasRef={canvasRef}
@@ -368,6 +484,14 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 						onBlur={(e) => handleTextBlur(e, editingElementId)}
 					/>
 				)}
+				<ExportImageDialog
+					isOpen={isExportModalOpen}
+					onClose={() => setIsExportModalOpen(false)}
+					onExportPng={handleExportPng}
+					onExportSvg={handleExportSvg}
+					onCopyToClipboard={handleCopyToClipboard}
+					previewDataUrl={previewDataUrl}
+				/>
 			</div>
 		</CanvasSettingsProvider>
 	);

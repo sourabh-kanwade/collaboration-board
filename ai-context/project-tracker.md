@@ -15,6 +15,7 @@ change.
 
 - Project Sidebar (`components/editor/project-sidebar.tsx`)
 - Editor Tool Bar (`components/editor/project-toolbar.tsx`) and Database auto-save
+- Export Image functionality with preview modal (PNG, SVG, Clipboard) in `BoardClient` and `ProjectSidebar`
 
 ## In Progress
 

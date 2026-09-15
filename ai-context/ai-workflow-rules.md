@@ -57,4 +57,5 @@ changes:
 1. The current unit works end to end within its defined scope
 2. No invariant defined in `architecture-context.md` was violated
 3. `project-tracker.md` reflects the completed work
-4. `npm run build` passes
+4. `pnpm run build` passes
+5. always lint and typecheck

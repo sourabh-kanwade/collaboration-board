@@ -22,6 +22,7 @@ export const metadata: Metadata = {
 };
 
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/toast";
 
 export default function RootLayout({
   children,
@@ -32,11 +33,13 @@ export default function RootLayout({
     <html
       lang="en"
       className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable, "font-sans", figtree.variable)}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ThemeProvider defaultTheme="system">
           <TooltipProvider>
             {children}
+            <Toaster />
           </TooltipProvider>
         </ThemeProvider>
       </body>
