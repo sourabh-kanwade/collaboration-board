@@ -301,12 +301,49 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 		});
 	}
 
+	function handleExport() {
+		const data = JSON.stringify(elements);
+		const blob = new Blob([data], { type: "application/json" });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `board-${boardId}.json`;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
 
+	function handleImport() {
+		const input = document.createElement("input");
+		input.type = "file";
+		input.accept = ".json,application/json";
+		input.onchange = (e: Event) => {
+			const target = e.target as HTMLInputElement;
+			const file = target.files?.[0];
+			if (!file) return;
+			const reader = new FileReader();
+			reader.onload = (ev) => {
+				try {
+					const content = ev.target?.result as string;
+					const parsed = JSON.parse(content);
+					if (Array.isArray(parsed)) {
+						setElements(parsed);
+						startTransition(() => {
+							saveBoardState(boardId, parsed).catch(console.error);
+						});
+					}
+				} catch (err) {
+					console.error("Failed to parse file", err);
+				}
+			};
+			reader.readAsText(file);
+		};
+		input.click();
+	}
 
 	return (
 		<CanvasSettingsProvider>
 			<div className="flex flex-col items-center font-sans h-screen relative">
-				<ProjectSidebar />
+				<ProjectSidebar onExport={handleExport} onImport={handleImport} />
 				<ProjectToolbar action={action} setAction={setAction} />
 				<CanvasWrapper
 					canvasRef={canvasRef}

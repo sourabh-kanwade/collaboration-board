@@ -18,7 +18,7 @@ import {
   GridIcon
 } from "@hugeicons/core-free-icons";
 
-export function ProjectSidebar() {
+export function ProjectSidebar({ onExport, onImport }: { onExport?: () => void; onImport?: () => void }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const { theme, setTheme } = useTheme();
   const { settings, setSettings } = useCanvasSettings();
@@ -48,11 +48,11 @@ export function ProjectSidebar() {
           <div className="text-xs font-semibold text-muted-foreground mb-2 px-2 uppercase tracking-wider">
             Project
           </div>
-          <Button variant="ghost" className="w-full justify-start text-sm">
+          <Button variant="ghost" className="w-full justify-start text-sm" onClick={onImport}>
             <HugeiconsIcon icon={Folder01Icon} className="mr-2 h-4 w-4" />
             Open
           </Button>
-          <Button variant="ghost" className="w-full justify-start text-sm">
+          <Button variant="ghost" className="w-full justify-start text-sm" onClick={onExport}>
             <HugeiconsIcon icon={FloppyDiskIcon} className="mr-2 h-4 w-4" />
             Save To
           </Button>
