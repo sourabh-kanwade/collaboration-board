@@ -340,10 +340,17 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 		input.click();
 	}
 
+	function handleReset() {
+		setElements([]);
+		startTransition(() => {
+			saveBoardState(boardId, []).catch(console.error);
+		});
+	}
+
 	return (
 		<CanvasSettingsProvider>
 			<div className="flex flex-col items-center font-sans h-screen relative">
-				<ProjectSidebar onExport={handleExport} onImport={handleImport} />
+				<ProjectSidebar onExport={handleExport} onImport={handleImport} onReset={handleReset} />
 				<ProjectToolbar action={action} setAction={setAction} />
 				<CanvasWrapper
 					canvasRef={canvasRef}

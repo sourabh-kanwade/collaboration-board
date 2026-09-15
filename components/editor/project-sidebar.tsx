@@ -4,6 +4,17 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useCanvasSettings } from "./canvas-settings-provider";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -18,7 +29,7 @@ import {
   GridIcon
 } from "@hugeicons/core-free-icons";
 
-export function ProjectSidebar({ onExport, onImport }: { onExport?: () => void; onImport?: () => void }) {
+export function ProjectSidebar({ onExport, onImport, onReset }: { onExport?: () => void; onImport?: () => void; onReset?: () => void }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const { theme, setTheme } = useTheme();
   const { settings, setSettings } = useCanvasSettings();
@@ -76,10 +87,30 @@ export function ProjectSidebar({ onExport, onImport }: { onExport?: () => void; 
           <div className="text-xs font-semibold text-muted-foreground mb-2 px-2 uppercase tracking-wider">
             Canvas
           </div>
-          <Button variant="ghost" className="w-full justify-start text-sm text-destructive hover:text-destructive hover:bg-destructive/10">
-            <HugeiconsIcon icon={Refresh01Icon} className="mr-2 h-4 w-4" />
-            Reset Canvas
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger
+              render={
+                <Button variant="ghost" className="w-full justify-start text-sm text-destructive hover:text-destructive hover:bg-destructive/10">
+                  <HugeiconsIcon icon={Refresh01Icon} className="mr-2 h-4 w-4" />
+                  Reset Canvas
+                </Button>
+              }
+            />
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently clear all elements from your canvas.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={onReset} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Reset
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           <div className="my-4 border-t border-border" />
 
