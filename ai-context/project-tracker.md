@@ -40,3 +40,4 @@ change.
 
 - Run `npm run dev` to test the board.
 - Ensure a valid `DATABASE_URL` is set in `.env` for Prisma to connect to the Postgres database.
+- Board element validation rejects non-finite IDs, bounds, and point coordinates.

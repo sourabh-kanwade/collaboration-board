@@ -145,6 +145,7 @@ export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: {
                     theme === option.value ? "bg-secondary" : "hover:bg-accent"
                   )}
                   onClick={() => setTheme(option.value)}
+                  aria-label={`${option.value} theme`}
                 >
                   <HugeiconsIcon icon={option.icon} className="mr-1 w-3.5 h-3.5" />
                 </Button>

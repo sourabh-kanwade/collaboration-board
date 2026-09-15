@@ -29,7 +29,7 @@ export function ExportImageDialog({
 }) {
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent className="sm:max-w-2xl grid-cols-1 overflow-hidden min-w-0">
+      <AlertDialogContent className="data-[size=default]:sm:max-w-2xl grid-cols-1 overflow-hidden min-w-0">
         <AlertDialogCancel
           variant="ghost"
           size="icon-sm"

@@ -112,12 +112,14 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 					});
 				}
 			} else if (element.type === 'pencil') {
-				context.moveTo(element.points[0].x, element.points[0].y);
-				// Draw a line to every subsequent point
-				for (let i = 1; i < element.points.length; i++) {
-					context.lineTo(element.points[i].x, element.points[i].y);
+				if (element.points && element.points.length > 0) {
+					context.moveTo(element.points[0].x, element.points[0].y);
+					// Draw a line to every subsequent point
+					for (let i = 1; i < element.points.length; i++) {
+						context.lineTo(element.points[i].x, element.points[i].y);
+					}
+					context.stroke();
 				}
-				context.stroke();
 			}
 		});
 
@@ -326,9 +328,10 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 					const content = ev.target?.result as string;
 					const parsed = JSON.parse(content);
 					if (Array.isArray(parsed)) {
-						setElements(parsed);
+						const validElements = parsed.filter(isBoardElement);
+						setElements(validElements);
 						startTransition(() => {
-							saveBoardState(boardId, parsed).catch(console.error);
+							saveBoardState(boardId, validElements).catch(console.error);
 						});
 					}
 				} catch (err) {
@@ -411,7 +414,7 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 				if (element.text) {
 					const lines = element.text.split('\n');
 					lines.forEach((line, index) => {
-						svgContent += `<text x="${element.x1}" y="${element.y1 + index * 24}" font-family="sans-serif" font-size="24px" fill="black" dominant-baseline="text-before-edge">${line}</text>`;
+						svgContent += `<text x="${element.x1}" y="${element.y1 + index * 24}" font-family="sans-serif" font-size="24px" fill="black" dominant-baseline="text-before-edge">${escapeXml(line)}</text>`;
 					});
 				}
 			} else if (element.type === 'pencil') {
@@ -648,5 +651,35 @@ function isPointNearLine(px: number, py: number, x1: number, y1: number, x2: num
 	const dx = px - xx;
 	const dy = py - yy;
 	return Math.sqrt(dx * dx + dy * dy) <= threshold;
+}
+
+function escapeXml(unsafe: string) {
+	return unsafe.replace(/[<>&'"]/g, function (c) {
+		switch (c) {
+			case '<': return '&lt;';
+			case '>': return '&gt;';
+			case '&': return '&amp;';
+			case '\'': return '&apos;';
+			case '"': return '&quot;';
+			default: return c;
+		}
+	});
+}
+
+function isBoardElement(el: unknown): el is BoardElement {
+	if (typeof el !== 'object' || el === null) return false;
+	const element = el as Record<string, unknown>;
+	if (typeof element.id !== 'number' || !Number.isFinite(element.id) || typeof element.type !== 'string') return false;
+	if (typeof element.x1 !== 'number' || !Number.isFinite(element.x1) || typeof element.y1 !== 'number' || !Number.isFinite(element.y1) || typeof element.x2 !== 'number' || !Number.isFinite(element.x2) || typeof element.y2 !== 'number' || !Number.isFinite(element.y2)) return false;
+	if (element.points) {
+		if (!Array.isArray(element.points)) return false;
+		for (const pt of element.points) {
+			if (typeof pt !== 'object' || pt === null) return false;
+			const point = pt as Record<string, unknown>;
+			if (typeof point.x !== 'number' || !Number.isFinite(point.x) || typeof point.y !== 'number' || !Number.isFinite(point.y)) return false;
+		}
+	}
+	if (element.type === 'pencil' && (!Array.isArray(element.points) || element.points.length === 0)) return false;
+	return true;
 }
 

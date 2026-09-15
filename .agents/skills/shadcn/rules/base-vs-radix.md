@@ -45,33 +45,20 @@ This applies to all trigger and close components: `DialogTrigger`, `SheetTrigger
 
 ---
 
-## Button / trigger as non-button element (base only)
+## Button as navigation link
 
-When `render` changes an element to a non-button (`<a>`, `<span>`), add `nativeButton={false}`.
-
-**Incorrect (base):** missing `nativeButton={false}`.
+To use a button appearance for a navigation link, use `buttonVariants` on a plain anchor element so link semantics are preserved, rather than using `render` or `asChild` on a `Button` component.
 
 ```tsx
-<Button render={<a href="/docs" />}>Read the docs</Button>
-```
+import { buttonVariants } from "@/components/ui/button";
 
-**Correct (base):**
-
-```tsx
-<Button render={<a href="/docs" />} nativeButton={false}>
+// Both base and radix:
+<a href="/docs" className={buttonVariants({ variant: "outline" })}>
   Read the docs
-</Button>
+</a>;
 ```
 
-**Correct (radix):**
-
-```tsx
-<Button asChild>
-  <a href="/docs">Read the docs</a>
-</Button>
-```
-
-Same for triggers whose `render` is not a `Button`:
+For non-navigation triggers whose `render` is not a `Button` (base only), add `nativeButton={false}`:
 
 ```tsx
 // base.
@@ -90,7 +77,9 @@ Same for triggers whose `render` is not a `Button`:
 
 ```tsx
 <Select>
-  <SelectTrigger><SelectValue placeholder="Select a fruit" /></SelectTrigger>
+  <SelectTrigger>
+    <SelectValue placeholder="Select a fruit" />
+  </SelectTrigger>
 </Select>
 ```
 
@@ -157,7 +146,9 @@ Base supports `multiple`, render-function children on `SelectValue`, and object 
 <Select items={items} multiple defaultValue={[]}>
   <SelectTrigger>
     <SelectValue>
-      {(value: string[]) => value.length === 0 ? "Select fruits" : `${value.length} selected`}
+      {(value: string[]) =>
+        value.length === 0 ? "Select fruits" : `${value.length} selected`
+      }
     </SelectValue>
   </SelectTrigger>
   ...
