@@ -21,14 +21,17 @@ change.
 - Element strokes now automatically switch between black and white for contrast with the selected background
 - Live collaboration session modal with name capture, copyable share link, QR code, participant chips, and session stop action
 - Session records persisted in Prisma and linked to the active board
+- Session stop now requires and verifies the host identity
+- Reused active sessions register new callers without duplicate participants
+- Session hydration and stop failures are reported without closing the dialog
 
 ## In Progress
 
-- Verification and cleanup
+- Complete
 
 ## Next Up
 
-- Final validation and build verification
+- None
 
 ## Open Questions
 

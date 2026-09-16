@@ -126,6 +126,8 @@ export function ProjectSidebar({
     try {
       await onStopSession?.();
       setIsSessionDialogOpen(false);
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : "Unable to stop the live session.");
     } finally {
       setIsSubmittingSession(false);
     }

@@ -34,6 +34,7 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	const [editingElementId, setEditingElementId] = useState<number | null>(null);
 	const [textInputValue, setTextInputValue] = useState("");
 	const [liveSession, setLiveSession] = useState<LiveSession | null>(null);
+	const [sessionUserName, setSessionUserName] = useState("");
 	const { settings } = useCanvasSettings();
 	const { resolvedTheme } = useTheme();
 	const strokeColor = getContrastingStrokeColor(settings.background, resolvedTheme);
@@ -48,11 +49,12 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			if (session) {
 				setLiveSession(session);
 			}
-		});
+		}).catch(console.error);
 	}, [boardId]);
 
 	const handleStartSession = async (name: string): Promise<LiveSession | void> => {
 		const session = await createLiveSession(boardId, name);
+		setSessionUserName(name.trim());
 		setLiveSession(session);
 		const nextUrl = new URL(window.location.href);
 		nextUrl.searchParams.set("session", session.id);
@@ -66,6 +68,7 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			throw new Error("This share link is missing a session ID.");
 		}
 		const session = await joinLiveSession(boardId, sessionId, name);
+		setSessionUserName(name.trim());
 		setLiveSession(session);
 		return session;
 	};
@@ -76,8 +79,9 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			setLiveSession(null);
 			return;
 		}
-		await stopLiveSession(boardId, sessionId);
+		await stopLiveSession(boardId, sessionUserName, sessionId);
 		setLiveSession(null);
+		setSessionUserName("");
 		const nextUrl = new URL(window.location.href);
 		nextUrl.searchParams.delete("session");
 		window.history.replaceState({}, "", nextUrl.toString());

@@ -145,8 +145,30 @@ export async function createLiveSession(boardId: string, displayName: string) {
   });
 
   if (existingSession) {
-    const existing = serializeSession(existingSession);
-    return existing;
+    const participants = normalizeParticipants(existingSession.participants);
+    const alreadyRegistered = participants.some(
+      (participant) =>
+        participant.name.toLowerCase() === cleanName.toLowerCase(),
+    );
+
+    if (!alreadyRegistered) {
+      const updatedSession = await prisma.session.update({
+        where: { id: existingSession.id },
+        data: {
+          participants: [
+            ...participants,
+            {
+              name: cleanName,
+              role: "guest",
+              joinedAt: new Date().toISOString(),
+            },
+          ],
+        },
+      });
+      return serializeSession(updatedSession);
+    }
+
+    return serializeSession(existingSession);
   }
 
   const session = await prisma.session.create({
@@ -218,7 +240,16 @@ export async function joinLiveSession(
   return serializeSession(updatedSession);
 }
 
-export async function stopLiveSession(boardId: string, sessionId?: string) {
+export async function stopLiveSession(
+  boardId: string,
+  callerName: string,
+  sessionId?: string,
+) {
+  const cleanCallerName = callerName.trim();
+  if (!cleanCallerName) {
+    throw new Error("A caller identity is required to stop the session.");
+  }
+
   const activeSession = sessionId
     ? await prisma.session.findFirst({
         where: {
@@ -237,6 +268,12 @@ export async function stopLiveSession(boardId: string, sessionId?: string) {
 
   if (!activeSession) {
     return null;
+  }
+
+  if (
+    activeSession.displayName.toLowerCase() !== cleanCallerName.toLowerCase()
+  ) {
+    throw new Error("Only the session host can stop this session.");
   }
 
   const updatedSession = await prisma.session.update({
