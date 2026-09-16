@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useQRCode } from "next-qrcode";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -41,15 +42,97 @@ export const THEME_OPTIONS = [
 
 export const PREDEFINED_COLORS = ['#ffffff', '#f8f9fa', '#e9ecef', '#212529'] as const;
 
-export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: { onExport?: () => void; onImport?: () => void; onReset?: () => void; onExportImage?: () => void }) {
+export type LiveParticipant = {
+  name: string;
+  role: "host" | "guest";
+  joinedAt: string;
+};
+
+export type LiveSession = {
+  id: string;
+  displayName: string;
+  link: string;
+  status: "active" | "stopped";
+  participants: LiveParticipant[];
+};
+
+export function ProjectSidebar({
+  onExport,
+  onImport,
+  onReset,
+  onExportImage,
+  onStartSession,
+  onJoinSession,
+  onStopSession,
+  liveSession,
+}: {
+  onExport?: () => void;
+  onImport?: () => void;
+  onReset?: () => void;
+  onExportImage?: () => void;
+  onStartSession?: (name: string) => Promise<LiveSession | void>;
+  onJoinSession?: (name: string) => Promise<LiveSession | void>;
+  onStopSession?: () => Promise<void> | void;
+  liveSession?: LiveSession | null;
+}) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = React.useState(false);
+  const [isSessionDialogOpen, setIsSessionDialogOpen] = React.useState(false);
+  const [sessionName, setSessionName] = React.useState("");
+  const [sessionError, setSessionError] = React.useState("");
+  const [isSubmittingSession, setIsSubmittingSession] = React.useState(false);
   const { theme, setTheme } = useTheme();
   const { settings, setSettings } = useCanvasSettings();
+  const { Canvas: QRCodeCanvas } = useQRCode();
+  const hasSessionQuery = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("session");
+  const isJoiningViaLink = Boolean(hasSessionQuery && !liveSession);
+
+  const handleSessionCopy = React.useCallback(async () => {
+    if (!liveSession?.link) return;
+
+    try {
+      await navigator.clipboard.writeText(liveSession.link);
+    } catch (error) {
+      console.error("Failed to copy session link", error);
+    }
+  }, [liveSession]);
+
+  const handleSubmitSession = React.useCallback(async () => {
+    const trimmedName = sessionName.trim();
+
+    if (!trimmedName) {
+      setSessionError("Please enter a display name.");
+      return;
+    }
+
+    setSessionError("");
+    setIsSubmittingSession(true);
+
+    try {
+      if (isJoiningViaLink) {
+        await onJoinSession?.(trimmedName);
+      } else {
+        await onStartSession?.(trimmedName);
+      }
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : "Unable to start the live session.");
+    } finally {
+      setIsSubmittingSession(false);
+    }
+  }, [isJoiningViaLink, onJoinSession, onStartSession, sessionName]);
+
+  const handleStopSession = React.useCallback(async () => {
+    setIsSubmittingSession(true);
+    try {
+      await onStopSession?.();
+      setIsSessionDialogOpen(false);
+    } finally {
+      setIsSubmittingSession(false);
+    }
+  }, [onStopSession]);
 
   return (
     <>
-      {/* Floating Toggle Button */}
       <div className="fixed top-4 left-4 z-50">
         <Button
           variant="outline"
@@ -61,7 +144,6 @@ export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: {
         </Button>
       </div>
 
-      {/* Floating Sidebar Shell */}
       <aside
         className={cn(
           "fixed top-0 left-0 h-full w-64 bg-card border-r border-border shadow-lg z-40 transition-transform duration-300 ease-in-out flex flex-col",
@@ -90,7 +172,14 @@ export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: {
           <div className="text-xs font-semibold text-muted-foreground mb-2 px-2 uppercase tracking-wider">
             Collaboration
           </div>
-          <Button variant="ghost" className="w-full justify-start text-sm">
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-sm"
+            onClick={() => {
+              setSessionError("");
+              setIsSessionDialogOpen(true);
+            }}
+          >
             <HugeiconsIcon icon={UserGroupIcon} className="mr-2 h-4 w-4" />
             Live Session
           </Button>
@@ -168,7 +257,7 @@ export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: {
             <ToggleGroup
               value={[settings.background]}
               onValueChange={(value) => {
-                if (value.length > 0) setSettings({ ...settings, background: value[0] })
+                if (value.length > 0) setSettings({ ...settings, background: value[0] });
               }}
               className="flex justify-start gap-2 mb-3"
             >
@@ -197,10 +286,128 @@ export function ProjectSidebar({ onExport, onImport, onReset, onExportImage }: {
               />
             </div>
           </div>
-
         </div>
       </aside>
+
+      <AlertDialog open={isSessionDialogOpen} onOpenChange={(open) => {
+        setIsSessionDialogOpen(open);
+        if (!open) {
+          setSessionError("");
+          setSessionName("");
+        }
+      }}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {liveSession ? "Live session" : isJoiningViaLink ? "Join session" : "Start live session"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {liveSession
+                ? "Share this link with people so they can join your board immediately."
+                : "Enter your display name and create a shareable link for anonymous collaboration."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {liveSession ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  Share link
+                </div>
+                <Input value={liveSession.link} readOnly className="font-mono text-xs" />
+              </div>
+
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={handleSessionCopy}>
+                  Copy link
+                </Button>
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <div className="mx-auto flex w-fit rounded-md bg-white p-2 shadow-sm">
+                  <QRCodeCanvas
+                    text={liveSession.link}
+                    options={{
+                      errorCorrectionLevel: "M",
+                      margin: 2,
+                      width: 124,
+                      color: {
+                        dark: "#111827",
+                        light: "#ffffff",
+                      },
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  Active members
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {liveSession.participants.length > 0 ? (
+                    liveSession.participants.map((participant) => (
+                      <div key={`${participant.name}-${participant.joinedAt}`} className="flex items-center gap-2 rounded-full border bg-background px-2 py-1 text-xs">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                          {getInitials(participant.name)}
+                        </span>
+                        <span>{participant.name}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">No one has joined yet.</span>
+                  )}
+                </div>
+              </div>
+
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setIsSessionDialogOpen(false)}>Close</AlertDialogCancel>
+                <Button variant="destructive" onClick={handleStopSession} disabled={isSubmittingSession}>
+                  {isSubmittingSession ? "Stopping..." : "Stop session"}
+                </Button>
+              </AlertDialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="session-name" className="text-sm font-medium text-foreground">
+                  Your name
+                </label>
+                <Input
+                  id="session-name"
+                  value={sessionName}
+                  onChange={(event) => setSessionName(event.target.value)}
+                  placeholder="Jane Doe"
+                  className="h-10"
+                />
+              </div>
+
+              {sessionError ? (
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                  {sessionError}
+                </div>
+              ) : null}
+
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setSessionName("")}>Cancel</AlertDialogCancel>
+                <Button onClick={handleSubmitSession} disabled={isSubmittingSession}>
+                  {isSubmittingSession ? "Working..." : isJoiningViaLink ? "Join session" : "Start session"}
+                </Button>
+              </AlertDialogFooter>
+            </div>
+          )}
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
+}
+
+function getInitials(value: string) {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "U";
 }
 

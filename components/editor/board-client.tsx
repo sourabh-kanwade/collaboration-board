@@ -1,9 +1,9 @@
 "use client";
-import { useLayoutEffect, useRef, useState, useTransition } from "react";
-import { ProjectSidebar } from "@/components/editor/project-sidebar";
+import { useLayoutEffect, useRef, useState, useTransition, useEffect } from "react";
+import { ProjectSidebar, type LiveSession } from "@/components/editor/project-sidebar";
 import { ProjectToolbar } from "@/components/editor/project-toolbar";
 import { CanvasSettingsProvider, useCanvasSettings } from "@/components/editor/canvas-settings-provider";
-import { saveBoardState } from "@/actions/board";
+import { saveBoardState, createLiveSession, joinLiveSession, stopLiveSession, getActiveSession } from "@/actions/board";
 import { ExportImageDialog } from "@/components/editor/export-image-dialog";
 import { toast } from "@/components/ui/toast";
 import { useTheme } from "@/components/theme-provider";
@@ -33,9 +33,55 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
 	const [editingElementId, setEditingElementId] = useState<number | null>(null);
 	const [textInputValue, setTextInputValue] = useState("");
+	const [liveSession, setLiveSession] = useState<LiveSession | null>(null);
 	const { settings } = useCanvasSettings();
 	const { resolvedTheme } = useTheme();
 	const strokeColor = getContrastingStrokeColor(settings.background, resolvedTheme);
+
+	useEffect(() => {
+		const sessionId = new URLSearchParams(window.location.search).get("session");
+		if (!sessionId) {
+			return;
+		}
+
+		void getActiveSession(boardId, sessionId).then((session) => {
+			if (session) {
+				setLiveSession(session);
+			}
+		});
+	}, [boardId]);
+
+	const handleStartSession = async (name: string): Promise<LiveSession | void> => {
+		const session = await createLiveSession(boardId, name);
+		setLiveSession(session);
+		const nextUrl = new URL(window.location.href);
+		nextUrl.searchParams.set("session", session.id);
+		window.history.replaceState({}, "", nextUrl.toString());
+		return session;
+	};
+
+	const handleJoinSession = async (name: string): Promise<LiveSession | void> => {
+		const sessionId = new URLSearchParams(window.location.search).get("session");
+		if (!sessionId) {
+			throw new Error("This share link is missing a session ID.");
+		}
+		const session = await joinLiveSession(boardId, sessionId, name);
+		setLiveSession(session);
+		return session;
+	};
+
+	const handleStopSession = async () => {
+		const sessionId = liveSession?.id ?? new URLSearchParams(window.location.search).get("session");
+		if (!sessionId) {
+			setLiveSession(null);
+			return;
+		}
+		await stopLiveSession(boardId, sessionId);
+		setLiveSession(null);
+		const nextUrl = new URL(window.location.href);
+		nextUrl.searchParams.delete("session");
+		window.history.replaceState({}, "", nextUrl.toString());
+	};
 
 	useLayoutEffect(() => {
 		const canvas = canvasRef.current;
@@ -478,7 +524,16 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 
 	return (
 		<div className="flex flex-col items-center font-sans h-screen relative">
-			<ProjectSidebar onExport={handleExport} onImport={handleImport} onReset={handleReset} onExportImage={handleExportImageRequest} />
+			<ProjectSidebar
+				onExport={handleExport}
+				onImport={handleImport}
+				onReset={handleReset}
+				onExportImage={handleExportImageRequest}
+				onStartSession={handleStartSession}
+				onJoinSession={handleJoinSession}
+				onStopSession={handleStopSession}
+				liveSession={liveSession}
+			/>
 			<ProjectToolbar action={action} setAction={setAction} />
 			<CanvasWrapper
 				canvasRef={canvasRef}

@@ -9,7 +9,7 @@ change.
 
 ## Current Goal
 
-- Implement editor toolbar
+- Implement live collaboration session flow
 
 ## Completed
 
@@ -19,14 +19,16 @@ change.
 - Canvas strokes and text now follow the selected light/dark theme, including SVG exports
 - Canvas background now automatically switches between default light/dark presets when the theme is toggled
 - Element strokes now automatically switch between black and white for contrast with the selected background
+- Live collaboration session modal with name capture, copyable share link, QR code, participant chips, and session stop action
+- Session records persisted in Prisma and linked to the active board
 
 ## In Progress
 
-- Next feature unit
+- Verification and cleanup
 
 ## Next Up
 
-- Real-Time Collaboration & Room Management
+- Final validation and build verification
 
 ## Open Questions
 
