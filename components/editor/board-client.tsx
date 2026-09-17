@@ -385,7 +385,6 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			} else if (element.type === 'pencil') {
 				if (element.points && element.points.length > 0) {
 					context.moveTo(element.points[0].x, element.points[0].y);
-					// Draw a line to every subsequent point
 					for (let i = 1; i < element.points.length; i++) {
 						context.lineTo(element.points[i].x, element.points[i].y);
 					}
@@ -394,8 +393,21 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			}
 		});
 
+		if (selectedElementId !== null) {
+			const selectedElement = elements.find((element) => element.id === selectedElementId);
+			if (selectedElement) {
+				const bounds = getElementBounds(selectedElement);
+				context.save();
+				context.strokeStyle = "#3b82f6";
+				context.lineWidth = 1.5;
+				context.setLineDash([6, 4]);
+				context.strokeRect(bounds.minX - 8, bounds.minY - 8, bounds.maxX - bounds.minX + 16, bounds.maxY - bounds.minY + 16);
+				context.restore();
+			}
+		}
+
 		context.restore();
-	}, [elements, canvasSize, panOffset, strokeColor])
+	}, [elements, canvasSize.width, canvasSize.height, panOffset.x, panOffset.y, strokeColor, selectedElementId])
 
 	function handleMouseUp() {
 		setIsDrawing(false);
@@ -693,18 +705,34 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			const isY = e.key.toLowerCase() === 'y';
 			const isShift = e.shiftKey;
 
+			const targetTag = (e.target as HTMLElement | null)?.tagName;
+			const isTypingTarget = targetTag === 'INPUT' || targetTag === 'TEXTAREA' || (e.target instanceof HTMLElement && e.target.isContentEditable);
+
 			if (isCtrlOrCmd && isZ && !isShift) {
 				e.preventDefault();
 				handleUndo();
 			} else if ((isCtrlOrCmd && isZ && isShift) || (isCtrlOrCmd && isY)) {
 				e.preventDefault();
 				handleRedo();
+			} else if (!isTypingTarget && (e.key === 'Delete' || e.key === 'Backspace') && selectedElementId !== null) {
+				e.preventDefault();
+				const nextElements = elements.filter((element) => element.id !== selectedElementId);
+				setElements(nextElements);
+				setHistory((previousHistory) => [...previousHistory, nextElements]);
+				setFuture([]);
+				if (socketRef.current && liveSession?.id) {
+					socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements: nextElements });
+				}
+				startTransition(() => {
+					saveBoardState(boardIdState, nextElements).catch(console.error);
+				});
+				setSelectedElementId(null);
 			}
 		};
 
 		window.addEventListener('keydown', handleKeyDown);
 		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, [handleUndo, handleRedo]);
+	}, [handleUndo, handleRedo, elements, selectedElementId, boardIdState, liveSession, startTransition]);
 
 	const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 	const [previewDataUrl, setPreviewDataUrl] = useState("");
@@ -1030,6 +1058,47 @@ function CanvasWrapper({
 			</div>
 		</div>
 	);
+}
+
+function getElementBounds(element: { x1: number, y1: number, x2: number, y2: number, type: string, points: Array<{ x: number, y: number }>, text?: string }) {
+	if (element.type === 'text') {
+		const textWidth = element.text ? Math.max(50, element.text.length * 15) : 50;
+		const textHeight = element.text ? element.text.split('\n').length * 24 : 24;
+		return {
+			minX: element.x1,
+			minY: element.y1,
+			maxX: element.x1 + textWidth,
+			maxY: element.y1 + textHeight,
+		};
+	}
+
+	if (element.type === 'pencil' && element.points.length > 0) {
+		const xValues = element.points.map((point) => point.x);
+		const yValues = element.points.map((point) => point.y);
+		return {
+			minX: Math.min(...xValues),
+			minY: Math.min(...yValues),
+			maxX: Math.max(...xValues),
+			maxY: Math.max(...yValues),
+		};
+	}
+
+	if (element.type === 'circle') {
+		const radius = Math.sqrt(Math.pow(element.x2 - element.x1, 2) + Math.pow(element.y2 - element.y1, 2));
+		return {
+			minX: element.x1 - radius,
+			minY: element.y1 - radius,
+			maxX: element.x1 + radius,
+			maxY: element.y1 + radius,
+		};
+	}
+
+	return {
+		minX: Math.min(element.x1, element.x2),
+		minY: Math.min(element.y1, element.y2),
+		maxX: Math.max(element.x1, element.x2),
+		maxY: Math.max(element.y1, element.y2),
+	};
 }
 
 function isPointNearElement(x: number, y: number, element: { x1: number, y1: number, x2: number, y2: number, type: string, points: Array<{ x: number, y: number }>, text?: string }): boolean {

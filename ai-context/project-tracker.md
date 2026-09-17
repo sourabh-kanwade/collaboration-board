@@ -36,6 +36,7 @@ change.
 - Session hydration and stop failures are reported without closing the dialog
 - Top-right collaboration control now mirrors the sidebar: connected sessions show Stop session, while disconnected state shows Live Session
 - Undo and redo logic with `Ctrl+Z` and `Ctrl+Shift+Z`/`Ctrl+Y` keyboard shortcuts, synced across the live session
+- Selection flow now supports visible dashed bounding boxes, drag-to-move handling, and delete-key removal for selected canvas elements
 
 ## In Progress
 
@@ -43,7 +44,7 @@ change.
 
 ## Next Up
 
-- None
+- Optional polish pass for selection handles and stronger hit-testing on more complex shapes
 
 ## Open Questions
 
