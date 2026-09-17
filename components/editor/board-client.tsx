@@ -1,5 +1,5 @@
 "use client";
-import { useLayoutEffect, useRef, useState, useTransition, useEffect } from "react";
+import { useLayoutEffect, useRef, useState, useTransition, useEffect, useCallback } from "react";
 import { io, type Socket } from "socket.io-client";
 import { ProjectSidebar, type LiveSession, type CollaborationPresence } from "@/components/editor/project-sidebar";
 import { ProjectToolbar } from "@/components/editor/project-toolbar";
@@ -46,6 +46,8 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const [action, setAction] = useState<string[]>(["pencil"]);
 	const [elements, setElements] = useState<BoardElement[]>(initialElements);
+	const [history, setHistory] = useState<BoardElement[][]>([initialElements]);
+	const [future, setFuture] = useState<BoardElement[][]>([]);
 	const [isDrawing, setIsDrawing] = useState(false);
 	const [, startTransition] = useTransition();
 	const [canvasSize, setCanvasSize] = useState({ width: 800, height: 800 });
@@ -109,7 +111,12 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 		void ensureBoard(boardIdState).catch(console.error);
 		void getBoardState(boardIdState)
 			.then((storedElements) => {
-				setElements((current) => (current.length > 0 ? current : (storedElements as BoardElement[])));
+				setElements((current) => {
+					const nextElements = current.length > 0 ? current : (storedElements as BoardElement[]);
+					setHistory([nextElements]);
+					setFuture([]);
+					return nextElements;
+				});
 			})
 			.catch(console.error);
 	}, [boardIdState]);
@@ -195,12 +202,21 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 		socket.on("board-state", (payload: { boardId?: string; sessionId?: string; elements?: BoardElement[] }) => {
 			if ((payload.boardId === boardIdState || payload.sessionId === liveSession?.id) && Array.isArray(payload.elements)) {
 				setElements(payload.elements);
+				setHistory([payload.elements]);
+				setFuture([]);
 			}
 		});
 
 		socket.on("board-update", (payload: { boardId?: string; sessionId?: string; elements?: BoardElement[] }) => {
 			if ((payload.boardId === boardIdState || payload.sessionId === liveSession?.id) && Array.isArray(payload.elements)) {
 				setElements(payload.elements);
+				setHistory(prev => {
+					if (prev.length === 0 || prev[prev.length - 1] !== payload.elements) {
+						return [...prev, payload.elements!];
+					}
+					return prev;
+				});
+				setFuture([]);
 			}
 		});
 
@@ -384,6 +400,15 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	function handleMouseUp() {
 		setIsDrawing(false);
 		if (editingElementId !== null) return;
+
+		setHistory(prev => {
+			if (prev.length === 0 || prev[prev.length - 1] !== elements) {
+				return [...prev, elements];
+			}
+			return prev;
+		});
+		setFuture([]);
+
 		if (socketRef.current && liveSession?.id) {
 			socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements });
 		}
@@ -552,17 +577,15 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			return updated;
 		});
 		setEditingElementId(prev => prev === id ? null : prev);
-		const nextElements = elements.map(el => {
-			if (el.id === id) {
-				return { ...el, text: newText };
-			}
-			return el;
-		});
+
+		setHistory(prev => [...prev, updated]);
+		setFuture([]);
+
 		if (socketRef.current && liveSession?.id) {
-			socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements: nextElements });
+			socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements: updated });
 		}
 		startTransition(() => {
-			saveBoardState(boardIdState, nextElements).catch(console.error);
+			saveBoardState(boardIdState, updated).catch(console.error);
 		});
 	}
 
@@ -593,6 +616,8 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 					if (Array.isArray(parsed)) {
 						const validElements = parsed.filter(isBoardElement);
 						setElements(validElements);
+						setHistory(prev => [...prev, validElements]);
+						setFuture([]);
 						if (socketRef.current && liveSession?.id) {
 							socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements: validElements });
 						}
@@ -611,6 +636,8 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 
 	function handleReset() {
 		setElements([]);
+		setHistory(prev => [...prev, []]);
+		setFuture([]);
 		if (socketRef.current && liveSession?.id) {
 			socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements: [] });
 		}
@@ -618,6 +645,66 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			saveBoardState(boardIdState, []).catch(console.error);
 		});
 	}
+
+	const handleUndo = useCallback(() => {
+		if (history.length <= 1) return;
+		const newHistory = [...history];
+		const currentState = newHistory.pop();
+		const previousState = newHistory[newHistory.length - 1];
+
+		if (currentState) {
+			setFuture(prev => [...prev, currentState]);
+		}
+		setHistory(newHistory);
+		setElements(previousState);
+
+		if (socketRef.current && liveSession?.id) {
+			socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements: previousState });
+		}
+		startTransition(() => {
+			saveBoardState(boardIdState, previousState).catch(console.error);
+		});
+	}, [history, boardIdState, liveSession]);
+
+	const handleRedo = useCallback(() => {
+		if (future.length === 0) return;
+		const newFuture = [...future];
+		const nextState = newFuture.pop();
+
+		if (nextState) {
+			setHistory(prev => [...prev, nextState]);
+			setFuture(newFuture);
+			setElements(nextState);
+
+			if (socketRef.current && liveSession?.id) {
+				socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements: nextState });
+			}
+			startTransition(() => {
+				saveBoardState(boardIdState, nextState).catch(console.error);
+			});
+		}
+	}, [future, boardIdState, liveSession]);
+
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+			const isCtrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
+			const isZ = e.key.toLowerCase() === 'z';
+			const isY = e.key.toLowerCase() === 'y';
+			const isShift = e.shiftKey;
+
+			if (isCtrlOrCmd && isZ && !isShift) {
+				e.preventDefault();
+				handleUndo();
+			} else if ((isCtrlOrCmd && isZ && isShift) || (isCtrlOrCmd && isY)) {
+				e.preventDefault();
+				handleRedo();
+			}
+		};
+
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}, [handleUndo, handleRedo]);
 
 	const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 	const [previewDataUrl, setPreviewDataUrl] = useState("");
