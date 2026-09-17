@@ -1,13 +1,9 @@
 "use server";
 
+import { createBrowserBoardId, isValidBrowserBoardId } from "@/lib/board-id";
 import { prisma } from "@/lib/db";
 
-const BROWSER_BOARD_ID_PREFIX = "browser-";
 const BOARD_STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
-
-function makeBrowserBoardId() {
-  return `${BROWSER_BOARD_ID_PREFIX}${crypto.randomUUID()}`;
-}
 
 async function pruneUnusedBoards() {
   const cutoff = new Date(Date.now() - BOARD_STALE_AFTER_MS);
@@ -40,14 +36,36 @@ export type LiveSessionRecord = {
 };
 
 export async function getDefaultBoard() {
-  return await getOrCreateBrowserBoard();
+  await pruneUnusedBoards();
+
+  const boardId = createBrowserBoardId();
+  if (isValidBrowserBoardId(boardId)) {
+    return await ensureBoard(boardId);
+  }
+
+  return await ensureBoard("browser-default");
 }
 
 export async function getOrCreateBrowserBoard() {
-  await pruneUnusedBoards();
+  return await getDefaultBoard();
+}
 
-  const boardId = makeBrowserBoardId();
-  return await ensureBoard(boardId);
+export async function getBoardState(id: string) {
+  const board = await ensureBoard(id);
+
+  if (Array.isArray(board.elements)) {
+    return board.elements as unknown[];
+  }
+
+  if (typeof board.elements === "string") {
+    try {
+      return JSON.parse(board.elements) as unknown[];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
 }
 
 export async function saveBoardState(id: string, elements: unknown) {

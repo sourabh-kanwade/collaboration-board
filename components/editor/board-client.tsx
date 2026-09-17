@@ -4,10 +4,11 @@ import { io, type Socket } from "socket.io-client";
 import { ProjectSidebar, type LiveSession, type CollaborationPresence } from "@/components/editor/project-sidebar";
 import { ProjectToolbar } from "@/components/editor/project-toolbar";
 import { CanvasSettingsProvider, useCanvasSettings } from "@/components/editor/canvas-settings-provider";
-import { saveBoardState, createLiveSession, joinLiveSession, stopLiveSession, getActiveSession, ensureBoard } from "@/actions/board";
+import { saveBoardState, createLiveSession, joinLiveSession, stopLiveSession, getActiveSession, ensureBoard, getBoardState } from "@/actions/board";
 import { ExportImageDialog } from "@/components/editor/export-image-dialog";
 import { toast } from "@/components/ui/toast";
 import { useTheme } from "@/components/theme-provider";
+import { createBrowserBoardId, getOrCreateStoredBrowserBoardId, persistBrowserBoardId } from "@/lib/board-id";
 
 export type BoardElement = {
 	id: number;
@@ -25,7 +26,13 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 const SESSION_NAME_STORAGE_KEY = "collab-board-session-name";
 
 function BoardEditor({ initialElements, boardId }: { initialElements: BoardElement[], boardId: string }) {
-	const [boardIdState, setBoardIdState] = useState<string>(boardId);
+	const [boardIdState, setBoardIdState] = useState<string>(() => {
+		if (boardId) {
+			return boardId;
+		}
+
+		return getOrCreateStoredBrowserBoardId() || createBrowserBoardId();
+	});
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const [action, setAction] = useState<string[]>(["pencil"]);
 	const [elements, setElements] = useState<BoardElement[]>(initialElements);
@@ -80,7 +87,20 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	}, [boardIdState]);
 
 	useEffect(() => {
+		persistBrowserBoardId(boardIdState);
+	}, [boardIdState]);
+
+	useEffect(() => {
+		if (!boardIdState) {
+			return;
+		}
+
 		void ensureBoard(boardIdState).catch(console.error);
+		void getBoardState(boardIdState)
+			.then((storedElements) => {
+				setElements((current) => (current.length > 0 ? current : (storedElements as BoardElement[])));
+			})
+			.catch(console.error);
 	}, [boardIdState]);
 
 	useEffect(() => {
