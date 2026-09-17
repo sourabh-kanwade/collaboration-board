@@ -22,6 +22,8 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 	);
 }
 
+const SESSION_NAME_STORAGE_KEY = "collab-board-session-name";
+
 function BoardEditor({ initialElements, boardId }: { initialElements: BoardElement[], boardId: string }) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const [action, setAction] = useState<string[]>(["pencil"]);
@@ -36,8 +38,18 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	const [textInputValue, setTextInputValue] = useState("");
 	const [liveSession, setLiveSession] = useState<LiveSession | null>(null);
 	const [sessionUserName, setSessionUserName] = useState(() => {
-		const randomName = `Guest-${Math.random().toString(36).slice(2, 8)}`;
-		return randomName;
+		if (typeof window === "undefined") {
+			return "";
+		}
+
+		const savedName = window.localStorage.getItem(SESSION_NAME_STORAGE_KEY);
+		if (savedName && savedName.trim()) {
+			return savedName.trim();
+		}
+
+		const generatedName = `Guest-${Math.random().toString(36).slice(2, 8)}`;
+		window.localStorage.setItem(SESSION_NAME_STORAGE_KEY, generatedName);
+		return generatedName;
 	});
 	const [presence, setPresence] = useState<CollaborationPresence[]>([]);
 	const [connectionStatus, setConnectionStatus] = useState<"connecting" | "connected" | "offline">("connecting");
@@ -46,6 +58,12 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	const { settings } = useCanvasSettings();
 	const { resolvedTheme } = useTheme();
 	const strokeColor = getContrastingStrokeColor(settings.background, resolvedTheme);
+
+	useEffect(() => {
+		if (typeof window !== "undefined" && sessionUserName.trim()) {
+			window.localStorage.setItem(SESSION_NAME_STORAGE_KEY, sessionUserName.trim());
+		}
+	}, [sessionUserName]);
 
 	useEffect(() => {
 		const sessionId = new URLSearchParams(window.location.search).get("session");
@@ -77,7 +95,6 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 
 		const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL ??
 			(window.location.hostname === "localhost" ? "http://localhost:3001" : `http://${window.location.hostname}:3001`);
-		console.log("socket attempting connection", { socketUrl, boardId, sessionId: liveSession.id, userName: sessionUserName });
 		const socket = io(socketUrl, {
 			transports: ["websocket", "polling"],
 			reconnection: true,
@@ -85,7 +102,6 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 		socketRef.current = socket;
 
 		socket.on("connect", () => {
-			console.log("socket connected", { socketId: socket.id, boardId, sessionId: liveSession.id });
 			setSocketId(socket.id ?? null);
 			setConnectionStatus("connected");
 			socket.emit("join-board", {
@@ -95,14 +111,37 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			});
 		});
 
-		socket.on("connect_error", (error) => {
-			console.error("socket connection error", { socketUrl, message: error.message, name: error.name, boardId });
+		socket.on("connect_error", () => {
 			setConnectionStatus("offline");
 		});
 
-		socket.on("disconnect", (reason) => {
-			console.log("socket disconnected", { reason, boardId, socketId: socket.id });
+		socket.on("disconnect", () => {
 			setConnectionStatus("offline");
+			toast.add({
+				title: "Session disconnected",
+				description: "The live session connection was lost.",
+				type: "warning",
+			});
+			setLiveSession(null);
+			setPresence([]);
+		});
+
+		socket.on("session-disconnected", (payload: { boardId?: string; reason?: string }) => {
+			if (payload.boardId !== boardId) {
+				return;
+			}
+
+			setConnectionStatus("offline");
+			setLiveSession(null);
+			setPresence([]);
+			const nextUrl = new URL(window.location.href);
+			nextUrl.searchParams.delete("session");
+			window.history.replaceState({}, "", nextUrl.toString());
+			toast.add({
+				title: "Session disconnected",
+				description: payload.reason ? `Live session ended: ${payload.reason}.` : "The live session was disconnected.",
+				type: "warning",
+			});
 		});
 
 		socket.on("board-state", (payload: { boardId?: string; elements?: BoardElement[] }) => {
@@ -151,9 +190,10 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	}, [boardId, liveSession?.id, sessionUserName]);
 
 	const handleStartSession = async (name: string): Promise<LiveSession | void> => {
+		const cleanedName = name.trim() || sessionUserName.trim() || "Guest";
 		setConnectionStatus("connecting");
-		const session = await createLiveSession(boardId, name);
-		setSessionUserName(name.trim());
+		const session = await createLiveSession(boardId, cleanedName);
+		setSessionUserName(cleanedName);
 		setLiveSession(session);
 		const nextUrl = new URL(window.location.href);
 		nextUrl.searchParams.set("session", session.id);
@@ -162,13 +202,14 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	};
 
 	const handleJoinSession = async (name: string): Promise<LiveSession | void> => {
+		const cleanedName = name.trim() || sessionUserName.trim() || "Guest";
 		setConnectionStatus("connecting");
 		const sessionId = new URLSearchParams(window.location.search).get("session");
 		if (!sessionId) {
 			throw new Error("This share link is missing a session ID.");
 		}
-		const session = await joinLiveSession(boardId, sessionId, name);
-		setSessionUserName(name.trim());
+		const session = await joinLiveSession(boardId, sessionId, cleanedName);
+		setSessionUserName(cleanedName);
 		setLiveSession(session);
 		return session;
 	};
@@ -655,45 +696,47 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 				liveSession={liveSession}
 				presence={presence}
 				connectionStatus={connectionStatus}
+				sessionName={sessionUserName}
+				onSessionNameChange={(value) => {
+					const nextName = value.trim() || "Guest";
+					setSessionUserName(nextName);
+				}}
 			/>
-			{liveSession ? (() => {
-				const activeUsers = presence.length > 0 ? presence.length : liveSession.participants.length;
+			{(() => {
+				const activeUsers = liveSession ? (presence.length > 0 ? presence.length : liveSession.participants.length) : 0;
 				const activeUsersLabel = `${activeUsers} active user${activeUsers === 1 ? "" : "s"}`;
+				const sessionStatus = liveSession ? (connectionStatus === "connected" ? "Session live" : "Session syncing") : "Session idle";
 
 				return (
 					<div className="fixed right-4 top-4 z-50 flex items-center gap-2">
 						<div className={[
 							"inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur-sm",
-							connectionStatus === "connected"
-								? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-								: connectionStatus === "offline"
-									? "border-destructive/30 bg-destructive/10 text-destructive"
-									: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+							liveSession
+								? connectionStatus === "connected"
+									? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+									: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+								: "border-border bg-card/90 text-foreground",
 						].join(" ")}
 						>
 							<span className={[
 								"h-2 w-2 rounded-full",
-								connectionStatus === "connected"
-									? "bg-emerald-500"
-									: connectionStatus === "offline"
-										? "bg-destructive"
-										: "bg-amber-500",
+								liveSession
+									? connectionStatus === "connected"
+										? "bg-emerald-500"
+										: "bg-amber-500"
+									: "bg-muted-foreground",
 							].join(" ")} />
-							<span>
-								{connectionStatus === "connected"
-									? "Socket connected"
-									: connectionStatus === "offline"
-										? "Socket disconnected"
-										: "Socket connecting"}
-							</span>
+							<span>{sessionStatus}</span>
 						</div>
-						<div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur-sm">
-							<span className="flex h-2 w-2 rounded-full bg-primary" />
-							{activeUsersLabel}
-						</div>
+						{liveSession ? (
+							<div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur-sm">
+								<span className="flex h-2 w-2 rounded-full bg-primary" />
+								{activeUsersLabel}
+							</div>
+						) : null}
 					</div>
 				);
-			})() : null}
+			})()}
 			<ProjectToolbar action={action} setAction={setAction} />
 			<CanvasWrapper
 				canvasRef={canvasRef}

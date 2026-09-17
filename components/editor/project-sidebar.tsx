@@ -76,6 +76,8 @@ export function ProjectSidebar({
   liveSession,
   presence,
   connectionStatus,
+  sessionName: activeSessionName,
+  onSessionNameChange,
 }: {
   onExport?: () => void;
   onImport?: () => void;
@@ -87,6 +89,8 @@ export function ProjectSidebar({
   liveSession?: LiveSession | null;
   presence?: CollaborationPresence[];
   connectionStatus?: "connecting" | "connected" | "offline";
+  sessionName?: string;
+  onSessionNameChange?: (value: string) => void;
 }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = React.useState(false);
@@ -100,15 +104,23 @@ export function ProjectSidebar({
   const hasSessionQuery = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("session");
   const isJoiningViaLink = Boolean(hasSessionQuery && !liveSession);
   const collaboratorList = React.useMemo(() => {
-    if (presence && presence.length > 0) {
-      return presence.map((participant) => ({
+    const source = presence && presence.length > 0
+      ? presence.map((participant) => ({
         name: participant.name,
         role: "guest" as const,
         joinedAt: new Date().toISOString(),
-      }));
-    }
+      }))
+      : liveSession?.participants ?? [];
 
-    return liveSession?.participants ?? [];
+    const seen = new Set<string>();
+    return source.filter((participant) => {
+      const signature = `${participant.name}::${participant.joinedAt ?? "unknown"}`;
+      if (seen.has(signature)) {
+        return false;
+      }
+      seen.add(signature);
+      return true;
+    });
   }, [liveSession, presence]);
 
   const handleSessionCopy = React.useCallback(async () => {
@@ -349,6 +361,19 @@ export function ProjectSidebar({
                 </Button>
               </div>
 
+              <div className="rounded-md border bg-muted/40 p-3">
+                <label htmlFor="session-name-live" className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  Session name
+                </label>
+                <Input
+                  id="session-name-live"
+                  value={activeSessionName?.trim() || sessionName.trim() || "Guest"}
+                  onChange={(event) => onSessionNameChange?.(event.target.value)}
+                  className="mt-2 h-10"
+                  placeholder="Guest"
+                />
+              </div>
+
               <div className="rounded-lg border bg-muted/30 p-3">
                 <div className="mx-auto flex w-fit rounded-md bg-white p-2 shadow-sm">
                   <QRCodeCanvas
@@ -388,7 +413,7 @@ export function ProjectSidebar({
                 <div className="flex flex-wrap gap-2">
                   {collaboratorList.length > 0 ? (
                     collaboratorList.map((participant, index) => (
-                      <div key={`${participant.name}-${participant.joinedAt ?? index}`} className="flex items-center gap-2 rounded-full border bg-background px-2 py-1 text-xs">
+                      <div key={`${participant.name}-${participant.joinedAt ?? "unknown"}-${index}`} className="flex items-center gap-2 rounded-full border bg-background px-2 py-1 text-xs">
                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
                           {getInitials(participant.name)}
                         </span>

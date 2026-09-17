@@ -64,6 +64,23 @@ function broadcastPresence(boardId) {
   });
 }
 
+function resetSessionForRoom(boardId, reason = "connection lost") {
+  const room = getRoom(boardId);
+  room.participants.clear();
+  room.elements = [];
+
+  const io = global.__boardIo;
+  if (!io || !boardId) return;
+
+  io.to(boardId).emit("session-disconnected", {
+    boardId,
+    reason,
+    disconnectedAt: new Date().toISOString(),
+  });
+
+  roomState.delete(boardId);
+}
+
 async function persistBoardState(boardId, elements) {
   if (!boardId || !Array.isArray(elements)) {
     return;
@@ -220,22 +237,15 @@ io.on("connection", (socket) => {
     }
 
     socket.leave(boardId);
-    const room = getRoom(boardId);
-    if (room.participants.has(socket.id)) {
-      room.participants.delete(socket.id);
-    }
-    broadcastPresence(boardId);
+    resetSessionForRoom(boardId, "session ended");
   });
 
   socket.on("disconnect", (reason) => {
     console.log("socket disconnected:", { socketId: socket.id, reason });
     for (const [boardId, room] of roomState.entries()) {
       if (room.participants.has(socket.id)) {
-        room.participants.delete(socket.id);
-        broadcastPresence(boardId);
-        if (room.participants.size === 0) {
-          roomState.delete(boardId);
-        }
+        resetSessionForRoom(boardId, reason || "connection lost");
+        break;
       }
     }
   });
