@@ -13,6 +13,8 @@ change.
 
 ## Completed
 
+- Browser-scoped board IDs are now generated and persisted via a cookie so each browser keeps its own unique board instead of sharing the default room
+- Stale boards older than 30 days are pruned before board creation or save operations, preventing the database from accumulating unused boards
 - Real-time Socket.IO room sync for board state and cursors is connected to the client
 - Live collaboration presence status and remote cursor overlays are displayed in the editor UI
 - Collaboration session metadata remains tied to the active board and room

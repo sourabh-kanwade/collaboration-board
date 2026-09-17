@@ -4,7 +4,7 @@ import { io, type Socket } from "socket.io-client";
 import { ProjectSidebar, type LiveSession, type CollaborationPresence } from "@/components/editor/project-sidebar";
 import { ProjectToolbar } from "@/components/editor/project-toolbar";
 import { CanvasSettingsProvider, useCanvasSettings } from "@/components/editor/canvas-settings-provider";
-import { saveBoardState, createLiveSession, joinLiveSession, stopLiveSession, getActiveSession } from "@/actions/board";
+import { saveBoardState, createLiveSession, joinLiveSession, stopLiveSession, getActiveSession, ensureBoard } from "@/actions/board";
 import { ExportImageDialog } from "@/components/editor/export-image-dialog";
 import { toast } from "@/components/ui/toast";
 import { useTheme } from "@/components/theme-provider";
@@ -25,6 +25,7 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 const SESSION_NAME_STORAGE_KEY = "collab-board-session-name";
 
 function BoardEditor({ initialElements, boardId }: { initialElements: BoardElement[], boardId: string }) {
+	const [boardIdState, setBoardIdState] = useState<string>(boardId);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const [action, setAction] = useState<string[]>(["pencil"]);
 	const [elements, setElements] = useState<BoardElement[]>(initialElements);
@@ -55,6 +56,7 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	const [connectionStatus, setConnectionStatus] = useState<"connecting" | "connected" | "offline">("connecting");
 	const [socketId, setSocketId] = useState<string | null>(null);
 	const socketRef = useRef<Socket | null>(null);
+	const previousBoardRef = useRef<string>(boardIdState);
 	const { settings } = useCanvasSettings();
 	const { resolvedTheme } = useTheme();
 	const strokeColor = getContrastingStrokeColor(settings.background, resolvedTheme);
@@ -66,27 +68,42 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	}, [sessionUserName]);
 
 	useEffect(() => {
+		if (previousBoardRef.current !== boardIdState && socketRef.current) {
+			socketRef.current.emit("leave-board", { boardId: previousBoardRef.current });
+			socketRef.current.disconnect();
+			socketRef.current = null;
+			setSocketId(null);
+			setPresence([]);
+		}
+
+		previousBoardRef.current = boardIdState;
+	}, [boardIdState]);
+
+	useEffect(() => {
+		void ensureBoard(boardIdState).catch(console.error);
+	}, [boardIdState]);
+
+	useEffect(() => {
 		const sessionId = new URLSearchParams(window.location.search).get("session");
 		if (!sessionId) {
 			return;
 		}
 
-		void getActiveSession(boardId, sessionId).then((session) => {
-			if (session) {
-				setLiveSession(session);
+		void getActiveSession(undefined, sessionId).then((session) => {
+			if (!session) {
+				return;
 			}
+
+			setBoardIdState(session.boardId);
+			setLiveSession(session);
 		}).catch(console.error);
-	}, [boardId]);
+	}, []);
 
 	useEffect(() => {
-		if (!liveSession?.id || !sessionUserName) {
-			console.log("socket effect skipped", {
-				hasLiveSession: Boolean(liveSession?.id),
-				hasSessionUserName: Boolean(sessionUserName),
-				boardId,
-			});
+		if (!liveSession?.id || !sessionUserName || !boardIdState) {
+
 			if (socketRef.current) {
-				socketRef.current.emit("leave-board", { boardId });
+				socketRef.current.emit("leave-board", { boardId: boardIdState, sessionId: liveSession?.id });
 				socketRef.current.disconnect();
 				socketRef.current = null;
 			}
@@ -105,9 +122,9 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			setSocketId(socket.id ?? null);
 			setConnectionStatus("connected");
 			socket.emit("join-board", {
-				boardId,
-				userName: sessionUserName,
+				boardId: boardIdState,
 				sessionId: liveSession.id,
+				userName: sessionUserName,
 			});
 		});
 
@@ -127,7 +144,7 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 		});
 
 		socket.on("session-disconnected", (payload: { boardId?: string; reason?: string }) => {
-			if (payload.boardId !== boardId) {
+			if (payload.boardId !== boardIdState) {
 				return;
 			}
 
@@ -144,20 +161,20 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			});
 		});
 
-		socket.on("board-state", (payload: { boardId?: string; elements?: BoardElement[] }) => {
-			if (payload.boardId === boardId && Array.isArray(payload.elements)) {
+		socket.on("board-state", (payload: { boardId?: string; sessionId?: string; elements?: BoardElement[] }) => {
+			if ((payload.boardId === boardIdState || payload.sessionId === liveSession?.id) && Array.isArray(payload.elements)) {
 				setElements(payload.elements);
 			}
 		});
 
-		socket.on("board-update", (payload: { boardId?: string; elements?: BoardElement[] }) => {
-			if (payload.boardId === boardId && Array.isArray(payload.elements)) {
+		socket.on("board-update", (payload: { boardId?: string; sessionId?: string; elements?: BoardElement[] }) => {
+			if ((payload.boardId === boardIdState || payload.sessionId === liveSession?.id) && Array.isArray(payload.elements)) {
 				setElements(payload.elements);
 			}
 		});
 
-		socket.on("presence-update", (payload: { boardId?: string; participants?: CollaborationPresence[] }) => {
-			if (payload.boardId === boardId) {
+		socket.on("presence-update", (payload: { boardId?: string; sessionId?: string; participants?: CollaborationPresence[] }) => {
+			if (payload.boardId === boardIdState || payload.sessionId === liveSession?.id) {
 				setPresence(payload.participants ?? []);
 			}
 		});
@@ -181,18 +198,19 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 		});
 
 		return () => {
-			socket.emit("leave-board", { boardId });
+			socket.emit("leave-board", { boardId: boardIdState, sessionId: liveSession?.id });
 			socket.disconnect();
 			socketRef.current = null;
 			setSocketId(null);
 			setPresence([]);
 		};
-	}, [boardId, liveSession?.id, sessionUserName]);
+	}, [boardIdState, liveSession?.id, sessionUserName]);
 
 	const handleStartSession = async (name: string): Promise<LiveSession | void> => {
 		const cleanedName = name.trim() || sessionUserName.trim() || "Guest";
 		setConnectionStatus("connecting");
-		const session = await createLiveSession(boardId, cleanedName);
+		const session = await createLiveSession(boardIdState, cleanedName);
+		setBoardIdState(session.boardId);
 		setSessionUserName(cleanedName);
 		setLiveSession(session);
 		const nextUrl = new URL(window.location.href);
@@ -208,7 +226,8 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 		if (!sessionId) {
 			throw new Error("This share link is missing a session ID.");
 		}
-		const session = await joinLiveSession(boardId, sessionId, cleanedName);
+		const session = await joinLiveSession(boardIdState, sessionId, cleanedName);
+		setBoardIdState(session.boardId);
 		setSessionUserName(cleanedName);
 		setLiveSession(session);
 		return session;
@@ -221,7 +240,7 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			setLiveSession(null);
 			return;
 		}
-		await stopLiveSession(boardId, sessionUserName, sessionId);
+		await stopLiveSession(boardIdState, sessionUserName, sessionId);
 		setConnectionStatus("offline");
 		setLiveSession(null);
 		setSessionUserName("");
@@ -335,10 +354,10 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 		setIsDrawing(false);
 		if (editingElementId !== null) return;
 		if (socketRef.current && liveSession?.id) {
-			socketRef.current.emit("board-state-change", { boardId, elements });
+			socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements });
 		}
 		startTransition(() => {
-			saveBoardState(boardId, elements).catch(console.error);
+			saveBoardState(boardIdState, elements).catch(console.error);
 		});
 	}
 
@@ -422,7 +441,7 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
 		const { offsetX, offsetY } = e.nativeEvent;
 		if (socketRef.current && liveSession?.id && sessionUserName) {
-			socketRef.current.emit("cursor-move", { boardId, x: offsetX, y: offsetY, userName: sessionUserName });
+			socketRef.current.emit("cursor-move", { boardId, sessionId: liveSession.id, x: offsetX, y: offsetY, userName: sessionUserName });
 		}
 		if (!isDrawing) {
 			return;
@@ -509,10 +528,10 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			return el;
 		});
 		if (socketRef.current && liveSession?.id) {
-			socketRef.current.emit("board-state-change", { boardId, elements: nextElements });
+			socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements: nextElements });
 		}
 		startTransition(() => {
-			saveBoardState(boardId, nextElements).catch(console.error);
+			saveBoardState(boardIdState, nextElements).catch(console.error);
 		});
 	}
 
@@ -544,10 +563,10 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 						const validElements = parsed.filter(isBoardElement);
 						setElements(validElements);
 						if (socketRef.current && liveSession?.id) {
-							socketRef.current.emit("board-state-change", { boardId, elements: validElements });
+							socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements: validElements });
 						}
 						startTransition(() => {
-							saveBoardState(boardId, validElements).catch(console.error);
+							saveBoardState(boardIdState, validElements).catch(console.error);
 						});
 					}
 				} catch (err) {
@@ -562,10 +581,10 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	function handleReset() {
 		setElements([]);
 		if (socketRef.current && liveSession?.id) {
-			socketRef.current.emit("board-state-change", { boardId, elements: [] });
+			socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements: [] });
 		}
 		startTransition(() => {
-			saveBoardState(boardId, []).catch(console.error);
+			saveBoardState(boardIdState, []).catch(console.error);
 		});
 	}
 

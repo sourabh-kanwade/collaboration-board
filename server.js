@@ -9,15 +9,21 @@ const port = Number(process.env.SOCKET_PORT || 3001);
 
 const roomState = new Map();
 
-function getRoom(boardId) {
-  if (!roomState.has(boardId)) {
-    roomState.set(boardId, {
+function getRoom(roomId, boardId = roomId) {
+  if (!roomState.has(roomId)) {
+    roomState.set(roomId, {
+      boardId,
       elements: [],
       participants: new Map(),
     });
   }
 
-  return roomState.get(boardId);
+  const room = roomState.get(roomId);
+  if (boardId && room && !room.boardId) {
+    room.boardId = boardId;
+  }
+
+  return room;
 }
 
 function normalizeBoardElements(value) {
@@ -38,8 +44,8 @@ function normalizeBoardElements(value) {
   return [];
 }
 
-function getPresencePayload(boardId) {
-  const room = getRoom(boardId);
+function getPresencePayload(roomId) {
+  const room = getRoom(roomId);
   return Array.from(room.participants.values()).map((participant) => ({
     id: participant.id,
     name: participant.name,
@@ -50,35 +56,32 @@ function getPresencePayload(boardId) {
   }));
 }
 
-function broadcastPresence(boardId) {
-  const room = getRoom(boardId);
-  const io = global.__boardIo;
-  if (!io) return;
-  io.to(boardId).emit("presence-update", {
-    boardId,
-    participants: getPresencePayload(boardId),
-  });
+function removeParticipantFromRoom(roomId, socketId) {
+  const room = roomState.get(roomId);
+  if (!room) return;
 
-  room.participants.forEach((participant) => {
-    participant.connected = true;
-  });
+  room.participants.delete(socketId);
+
+  if (room.participants.size === 0) {
+    roomState.delete(roomId);
+  }
 }
 
-function resetSessionForRoom(boardId, reason = "connection lost") {
-  const room = getRoom(boardId);
+function resetSessionForRoom(roomId, reason = "connection lost") {
+  const room = getRoom(roomId);
   room.participants.clear();
   room.elements = [];
 
   const io = global.__boardIo;
-  if (!io || !boardId) return;
+  if (!io || !roomId) return;
 
-  io.to(boardId).emit("session-disconnected", {
-    boardId,
+  io.to(roomId).emit("session-disconnected", {
+    boardId: room.boardId || roomId,
     reason,
     disconnectedAt: new Date().toISOString(),
   });
 
-  roomState.delete(boardId);
+  roomState.delete(roomId);
 }
 
 async function persistBoardState(boardId, elements) {
@@ -126,9 +129,13 @@ io.on("connection", (socket) => {
       return;
     }
 
-    socket.join(boardId);
+    const roomId =
+      typeof sessionId === "string" && sessionId.trim()
+        ? sessionId.trim()
+        : boardId;
+    socket.join(roomId);
 
-    const room = getRoom(boardId);
+    const room = getRoom(roomId, boardId);
     const displayName =
       typeof userName === "string" && userName.trim().length > 0
         ? userName.trim()
@@ -156,12 +163,14 @@ io.on("connection", (socket) => {
 
     socket.emit("board-state", {
       boardId,
+      sessionId: roomId,
       elements: room.elements,
     });
 
-    io.to(boardId).emit("presence-update", {
+    io.to(roomId).emit("presence-update", {
       boardId,
-      participants: getPresencePayload(boardId),
+      sessionId: roomId,
+      participants: getPresencePayload(roomId),
     });
 
     if (typeof sessionId === "string" && sessionId.trim()) {
@@ -169,10 +178,11 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("board-state-change", ({ boardId, elements }) => {
+  socket.on("board-state-change", ({ boardId, elements, sessionId }) => {
     console.log("board-state-change received:", {
       socketId: socket.id,
       boardId,
+      sessionId,
       elementCount: Array.isArray(elements) ? elements.length : "invalid",
     });
     if (!boardId) {
@@ -182,19 +192,25 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const room = getRoom(boardId);
+    const roomId =
+      typeof sessionId === "string" && sessionId.trim()
+        ? sessionId.trim()
+        : boardId;
+    const room = getRoom(roomId, boardId);
     room.elements = Array.isArray(elements) ? elements : room.elements;
     void persistBoardState(boardId, room.elements);
-    io.to(boardId).emit("board-update", {
+    io.to(roomId).emit("board-update", {
       boardId,
+      sessionId: roomId,
       elements: room.elements,
     });
   });
 
-  socket.on("cursor-move", ({ boardId, x, y, userName }) => {
+  socket.on("cursor-move", ({ boardId, sessionId, x, y, userName }) => {
     console.log("cursor-move received:", {
       socketId: socket.id,
       boardId,
+      sessionId,
       x,
       y,
       userName,
@@ -206,7 +222,11 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const room = getRoom(boardId);
+    const roomId =
+      typeof sessionId === "string" && sessionId.trim()
+        ? sessionId.trim()
+        : boardId;
+    const room = getRoom(roomId, boardId);
     const participant = room.participants.get(socket.id);
     if (!participant) {
       return;
@@ -218,7 +238,7 @@ io.on("connection", (socket) => {
       participant.name = userName.trim();
     }
 
-    socket.to(boardId).emit("cursor-update", {
+    socket.to(roomId).emit("cursor-update", {
       userId: socket.id,
       name: participant.name,
       color: participant.color,
@@ -227,24 +247,39 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("leave-board", ({ boardId }) => {
-    console.log("leave-board received:", { socketId: socket.id, boardId });
-    if (!boardId) {
-      console.warn("leave-board rejected: missing boardId", {
+  socket.on("leave-board", ({ boardId, sessionId }) => {
+    console.log("leave-board received:", {
+      socketId: socket.id,
+      boardId,
+      sessionId,
+    });
+    if (!boardId && !sessionId) {
+      console.warn("leave-board rejected: missing boardId or sessionId", {
         socketId: socket.id,
       });
       return;
     }
 
-    socket.leave(boardId);
-    resetSessionForRoom(boardId, "session ended");
+    const roomId =
+      typeof sessionId === "string" && sessionId.trim()
+        ? sessionId.trim()
+        : boardId;
+    socket.leave(roomId);
+    resetSessionForRoom(roomId, "session ended");
   });
 
   socket.on("disconnect", (reason) => {
     console.log("socket disconnected:", { socketId: socket.id, reason });
-    for (const [boardId, room] of roomState.entries()) {
-      if (room.participants.has(socket.id)) {
-        resetSessionForRoom(boardId, reason || "connection lost");
+    for (const roomId of roomState.keys()) {
+      if (roomState.get(roomId)?.participants.has(socket.id)) {
+        removeParticipantFromRoom(roomId, socket.id);
+        const remainingRoom = roomState.get(roomId);
+        if (remainingRoom && remainingRoom.participants.size > 0) {
+          io.to(roomId).emit("presence-update", {
+            boardId: remainingRoom.boardId || roomId,
+            participants: getPresencePayload(roomId),
+          });
+        }
         break;
       }
     }

@@ -2,7 +2,27 @@
 
 import { prisma } from "@/lib/db";
 
-const DEFAULT_BOARD_ID = "default-board-1";
+const BROWSER_BOARD_ID_PREFIX = "browser-";
+const BOARD_STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+
+function makeBrowserBoardId() {
+  return `${BROWSER_BOARD_ID_PREFIX}${crypto.randomUUID()}`;
+}
+
+async function pruneUnusedBoards() {
+  const cutoff = new Date(Date.now() - BOARD_STALE_AFTER_MS);
+  const result = await prisma.board.deleteMany({
+    where: {
+      updatedAt: {
+        lt: cutoff,
+      },
+    },
+  });
+
+  if (result.count > 0) {
+    console.log(`Deleted ${result.count} stale board(s) older than 30 days.`);
+  }
+}
 
 type SessionParticipant = {
   name: string;
@@ -20,18 +40,19 @@ export type LiveSessionRecord = {
 };
 
 export async function getDefaultBoard() {
-  return await prisma.board.upsert({
-    where: { id: DEFAULT_BOARD_ID },
-    update: {},
-    create: {
-      id: DEFAULT_BOARD_ID,
-      elements: [],
-    },
-  });
+  return await getOrCreateBrowserBoard();
+}
+
+export async function getOrCreateBrowserBoard() {
+  await pruneUnusedBoards();
+
+  const boardId = makeBrowserBoardId();
+  return await ensureBoard(boardId);
 }
 
 export async function saveBoardState(id: string, elements: unknown) {
   try {
+    await pruneUnusedBoards();
     await prisma.board.update({
       where: { id },
       // @ts-expect-error - elements is unknown but Prisma accepts it as JSON
@@ -45,10 +66,18 @@ export async function saveBoardState(id: string, elements: unknown) {
 }
 
 export async function ensureBoard(id: string) {
-  return await prisma.board.upsert({
+  await pruneUnusedBoards();
+
+  const existingBoard = await prisma.board.findUnique({
     where: { id },
-    update: {},
-    create: {
+  });
+
+  if (existingBoard) {
+    return existingBoard;
+  }
+
+  return await prisma.board.create({
+    data: {
       id,
       elements: [],
     },
@@ -103,14 +132,17 @@ function createSessionLink(sessionId: string) {
   return `${normalizedBase}?session=${encodeURIComponent(sessionId)}`;
 }
 
-export async function getActiveSession(boardId: string, sessionId?: string) {
-  await ensureBoard(boardId);
+export async function getActiveSession(boardId?: string, sessionId?: string) {
+  if (boardId) {
+    await ensureBoard(boardId);
+  }
 
   const session = sessionId
     ? await prisma.session.findFirst({
         where: {
           id: sessionId,
-          boardId,
+          ...(boardId ? { boardId } : {}),
+          status: "active",
         },
       })
     : await prisma.session.findFirst({
