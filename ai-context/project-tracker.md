@@ -34,6 +34,7 @@ change.
 - Session stop now requires and verifies the host identity
 - Reused active sessions register new callers without duplicate participants
 - Session hydration and stop failures are reported without closing the dialog
+- Top-right collaboration control now mirrors the sidebar: connected sessions show Stop session, while disconnected state shows Live Session
 
 ## In Progress
 

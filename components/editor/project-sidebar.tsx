@@ -78,6 +78,8 @@ export function ProjectSidebar({
   connectionStatus,
   sessionName: activeSessionName,
   onSessionNameChange,
+  isSessionDialogOpen,
+  onSessionDialogOpenChange,
 }: {
   onExport?: () => void;
   onImport?: () => void;
@@ -91,10 +93,20 @@ export function ProjectSidebar({
   connectionStatus?: "connecting" | "connected" | "offline";
   sessionName?: string;
   onSessionNameChange?: (value: string) => void;
+  isSessionDialogOpen?: boolean;
+  onSessionDialogOpenChange?: (open: boolean) => void;
 }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = React.useState(false);
-  const [isSessionDialogOpen, setIsSessionDialogOpen] = React.useState(false);
+  const [internalSessionDialogOpen, setInternalSessionDialogOpen] = React.useState(false);
+  const isDialogOpen = isSessionDialogOpen ?? internalSessionDialogOpen;
+  const setDialogOpen = React.useCallback((open: boolean) => {
+    if (onSessionDialogOpenChange) {
+      onSessionDialogOpenChange(open);
+      return;
+    }
+    setInternalSessionDialogOpen(open);
+  }, [onSessionDialogOpenChange]);
   const [sessionName, setSessionName] = React.useState("");
   const [sessionError, setSessionError] = React.useState("");
   const [isSubmittingSession, setIsSubmittingSession] = React.useState(false);
@@ -161,13 +173,13 @@ export function ProjectSidebar({
     setIsSubmittingSession(true);
     try {
       await onStopSession?.();
-      setIsSessionDialogOpen(false);
+      setDialogOpen(false);
     } catch (error) {
       setSessionError(error instanceof Error ? error.message : "Unable to stop the live session.");
     } finally {
       setIsSubmittingSession(false);
     }
-  }, [onStopSession]);
+  }, [onStopSession, setDialogOpen]);
 
   return (
     <>
@@ -215,7 +227,7 @@ export function ProjectSidebar({
             className="w-full justify-start text-sm"
             onClick={() => {
               setSessionError("");
-              setIsSessionDialogOpen(true);
+              setDialogOpen(true);
             }}
           >
             <HugeiconsIcon icon={UserGroupIcon} className="mr-2 h-4 w-4" />
@@ -327,8 +339,8 @@ export function ProjectSidebar({
         </div>
       </aside>
 
-      <AlertDialog open={isSessionDialogOpen} onOpenChange={(open) => {
-        setIsSessionDialogOpen(open);
+      <AlertDialog open={isDialogOpen} onOpenChange={(open) => {
+        setDialogOpen(open);
         if (!open) {
           setSessionError("");
           setSessionName("");
@@ -427,7 +439,7 @@ export function ProjectSidebar({
               </div>
 
               <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setIsSessionDialogOpen(false)}>Close</AlertDialogCancel>
+                <AlertDialogCancel onClick={() => setDialogOpen(false)}>Close</AlertDialogCancel>
                 <Button variant="destructive" onClick={handleStopSession} disabled={isSubmittingSession}>
                   {isSubmittingSession ? "Stopping..." : "Stop session"}
                 </Button>

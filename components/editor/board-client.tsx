@@ -9,6 +9,16 @@ import { ExportImageDialog } from "@/components/editor/export-image-dialog";
 import { toast } from "@/components/ui/toast";
 import { useTheme } from "@/components/theme-provider";
 import { createBrowserBoardId, getOrCreateStoredBrowserBoardId, persistBrowserBoardId } from "@/lib/board-id";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { UserGroupIcon } from "@hugeicons/core-free-icons";
 
 export type BoardElement = {
 	id: number;
@@ -61,6 +71,7 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	});
 	const [presence, setPresence] = useState<CollaborationPresence[]>([]);
 	const [connectionStatus, setConnectionStatus] = useState<"connecting" | "connected" | "offline">("connecting");
+	const [isSessionDialogOpen, setIsSessionDialogOpen] = useState(false);
 	const [socketId, setSocketId] = useState<string | null>(null);
 	const socketRef = useRef<Socket | null>(null);
 	const previousBoardRef = useRef<string>(boardIdState);
@@ -722,6 +733,11 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 		}
 	}
 
+	const memberList = (presence.length > 0 ? presence : (liveSession?.participants ?? [])).map((participant, index) => ({
+		id: "id" in participant ? participant.id : `${participant.name}-${index}`,
+		name: participant.name,
+	}));
+
 	return (
 		<div className="flex flex-col items-center font-sans h-screen relative">
 			<ProjectSidebar
@@ -736,46 +752,62 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 				presence={presence}
 				connectionStatus={connectionStatus}
 				sessionName={sessionUserName}
+				isSessionDialogOpen={isSessionDialogOpen}
+				onSessionDialogOpenChange={setIsSessionDialogOpen}
 				onSessionNameChange={(value) => {
 					const nextName = value.trim() || "Guest";
 					setSessionUserName(nextName);
 				}}
 			/>
-			{(() => {
-				const activeUsers = liveSession ? (presence.length > 0 ? presence.length : liveSession.participants.length) : 0;
-				const activeUsersLabel = `${activeUsers} active user${activeUsers === 1 ? "" : "s"}`;
-				const sessionStatus = liveSession ? (connectionStatus === "connected" ? "Session live" : "Session syncing") : "Session idle";
-
-				return (
-					<div className="fixed right-4 top-4 z-50 flex items-center gap-2">
-						<div className={[
-							"inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur-sm",
-							liveSession
-								? connectionStatus === "connected"
-									? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-									: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-								: "border-border bg-card/90 text-foreground",
-						].join(" ")}
-						>
-							<span className={[
-								"h-2 w-2 rounded-full",
-								liveSession
-									? connectionStatus === "connected"
-										? "bg-emerald-500"
-										: "bg-amber-500"
-									: "bg-muted-foreground",
-							].join(" ")} />
-							<span>{sessionStatus}</span>
-						</div>
-						{liveSession ? (
-							<div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur-sm">
-								<span className="flex h-2 w-2 rounded-full bg-primary" />
-								{activeUsersLabel}
+			<div className="fixed right-4 top-4 z-50 flex items-center gap-2">
+				{liveSession && connectionStatus === "connected" ? (
+					<Button
+						variant="destructive"
+						size="sm"
+						className="shadow-sm"
+						onClick={handleStopSession}
+					>
+						Stop session
+					</Button>
+				) : (
+					<Button
+						variant="outline"
+						size="sm"
+						className="bg-card/90 shadow-sm backdrop-blur-sm"
+						onClick={() => setIsSessionDialogOpen(true)}
+					>
+						<HugeiconsIcon icon={UserGroupIcon} className="mr-2 h-4 w-4" />
+						Live Session
+					</Button>
+				)}
+				{liveSession ? (
+					<DropdownMenu>
+						<DropdownMenuTrigger className="flex items-center rounded-full border border-border bg-card/90 px-2 py-1.5 shadow-sm backdrop-blur-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+							<div className="flex -space-x-2">
+								{memberList.slice(0, 3).map((participant) => (
+									<Avatar key={participant.id} className="h-7 w-7 border-2 border-background bg-muted text-[10px] font-semibold text-foreground">
+										<AvatarFallback>{participant.name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "U"}</AvatarFallback>
+									</Avatar>
+								))}
 							</div>
-						) : null}
-					</div>
-				);
-			})()}
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="w-52 p-1">
+							{memberList.length > 0 ? (
+								memberList.slice(0, 8).map((participant) => (
+									<DropdownMenuItem key={participant.id} className="gap-2 cursor-pointer">
+										<Avatar className="h-7 w-7 border border-background bg-muted text-[10px] font-semibold text-foreground">
+											<AvatarFallback>{participant.name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "U"}</AvatarFallback>
+										</Avatar>
+										<span className="truncate">{participant.name}</span>
+									</DropdownMenuItem>
+								))
+							) : (
+								<div className="px-3 py-2 text-sm text-muted-foreground">No members yet</div>
+							)}
+						</DropdownMenuContent>
+					</DropdownMenu>
+				) : null}
+			</div>
 			<ProjectToolbar action={action} setAction={setAction} />
 			<CanvasWrapper
 				canvasRef={canvasRef}
