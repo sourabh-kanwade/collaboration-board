@@ -203,16 +203,34 @@ test.describe('Collaboration Board Core Features', () => {
   test('Export Image functionality', async ({ page }) => {
     await page.goto('/');
 
+    // Draw something first because empty canvas cannot be exported
+    const rectangleBtn = page.locator('[aria-label="Rectangle"]');
+    await rectangleBtn.click();
+    const canvas = page.locator('canvas');
+    const box = await canvas.boundingBox();
+    if (box) {
+      await page.mouse.move(box.x + 100, box.y + 100);
+      await page.mouse.down();
+      await page.mouse.move(box.x + 200, box.y + 200);
+      await page.mouse.up();
+    }
+
+    // Open sidebar
+    const menuBtn = page.getByRole('button', { name: 'Menu' });
+    await expect(menuBtn).toBeVisible();
+    await menuBtn.click();
+
     // Wait for Export button to be visible
-    const exportBtn = page.getByRole('button', { name: 'Export' });
+    const exportBtn = page.getByRole('button', { name: 'Export Image' });
     await expect(exportBtn).toBeVisible();
 
     // Click Export
     await exportBtn.click();
 
     // Verify dialog appears
-    await expect(page.getByText('Export Image')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Download' })).toBeVisible();
+    // getByText('Export Image').first() or similar to distinguish from the button
+    await expect(page.getByRole('heading', { name: 'Export Image' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Export PNG' })).toBeVisible();
     
     // Close dialog
     await page.keyboard.press('Escape');
@@ -221,13 +239,13 @@ test.describe('Collaboration Board Core Features', () => {
   test('Settings toggle functionality', async ({ page }) => {
     await page.goto('/');
 
-    const settingsBtn = page.getByRole('button', { name: 'Settings' });
-    await expect(settingsBtn).toBeVisible();
+    // Open sidebar
+    const menuBtn = page.getByRole('button', { name: 'Menu' });
+    await expect(menuBtn).toBeVisible();
+    await menuBtn.click();
 
-    // Click Settings
-    await settingsBtn.click();
-
-    // Look for a setting that should appear, e.g. "Background" or "Grid"
-    await expect(page.getByText('Canvas Settings')).toBeVisible();
+    // Look for a setting that should appear, e.g. "Background" or "Theme"
+    await expect(page.getByText('Background')).toBeVisible();
+    await expect(page.getByText('Theme')).toBeVisible();
   });
 });

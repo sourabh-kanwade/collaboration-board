@@ -188,6 +188,7 @@ export function ProjectSidebar({
         <Button
           variant="outline"
           size="icon"
+          aria-label="Menu"
           onClick={() => setIsOpen(!isOpen)}
           className="bg-card shadow-sm"
         >
