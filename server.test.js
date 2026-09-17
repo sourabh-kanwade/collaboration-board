@@ -103,3 +103,47 @@ test("board ownership validation rejects mismatched authenticated user IDs", () 
     true,
   );
 });
+
+test("normalizeBoardElements handles different input types", () => {
+  const { normalizeBoardElements } = require("./server.js");
+  
+  // Array
+  assert.deepEqual(normalizeBoardElements([{ id: "1" }]), [{ id: "1" }]);
+  
+  // Valid JSON string
+  assert.deepEqual(normalizeBoardElements('[{"id":"2"}]'), [{ id: "2" }]);
+  
+  // Invalid JSON string
+  assert.deepEqual(normalizeBoardElements("invalid json"), []);
+  
+  // Non-array JSON string
+  assert.deepEqual(normalizeBoardElements('{"id":"2"}'), []);
+  
+  // Null/undefined
+  assert.deepEqual(normalizeBoardElements(null), []);
+  assert.deepEqual(normalizeBoardElements(undefined), []);
+});
+
+test("getPresencePayload returns formatted participant list", () => {
+  const { getPresencePayload, roomState, getRoom } = require("./server.js");
+  
+  roomState.clear();
+  const room = getRoom("room-presence", "board-presence");
+  room.participants.set("socket-1", {
+    id: "socket-1",
+    name: "User 1",
+    color: "hsl(100, 75%, 60%)",
+    x: 10,
+    y: 20,
+    connected: true
+  });
+  
+  const payload = getPresencePayload("room-presence");
+  assert.equal(payload.length, 1);
+  assert.equal(payload[0].id, "socket-1");
+  assert.equal(payload[0].name, "User 1");
+  assert.equal(payload[0].x, 10);
+  
+  // Empty room
+  assert.deepEqual(getPresencePayload("non-existent-room"), []);
+});

@@ -61,6 +61,9 @@ test.describe('Collaboration Board Core Features', () => {
     // Wait for dialog
     await page1.waitForTimeout(500);
 
+    // Enter a display name
+    await page1.fill('#session-name', 'User 1');
+
     // Click Start session
     const startSessionBtn = page1.getByText('Start session').first();
     await startSessionBtn.dispatchEvent('click');
@@ -98,10 +101,9 @@ test.describe('Collaboration Board Core Features', () => {
     }
 
     // Wait for network/websocket to propagate
-    await page2.waitForTimeout(1000);
-
-    // Again, it's hard to assert canvas content, but we know it shouldn't crash
-    // and both pages remain active.
+    // Assert that User 2 sees User 1's cursor
+    await expect(page2.getByText('User 1')).toBeVisible({ timeout: 5000 });
+    
     await expect(page2.locator('canvas')).toBeVisible();
 
     await context1.close();
@@ -132,5 +134,100 @@ test.describe('Collaboration Board Core Features', () => {
 
     // The canvas should still be there and ideally contain the elements
     await expect(page.locator('canvas')).toBeVisible();
+  });
+
+  test('Drawing Mechanics - Circle', async ({ page }) => {
+    await page.goto('/');
+
+    const circleBtn = page.locator('[aria-label="Circle"]');
+    await circleBtn.click();
+
+    const canvas = page.locator('canvas');
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('Canvas not visible');
+
+    await page.mouse.move(box.x + 100, box.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 200, box.y + 200);
+    await page.mouse.up();
+
+    await expect(canvas).toBeVisible();
+  });
+
+  test('Drawing Mechanics - Pencil', async ({ page }) => {
+    await page.goto('/');
+
+    const pencilBtn = page.locator('[aria-label="Pencil"]');
+    await pencilBtn.click();
+
+    const canvas = page.locator('canvas');
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('Canvas not visible');
+
+    await page.mouse.move(box.x + 100, box.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 120, box.y + 120);
+    await page.mouse.move(box.x + 140, box.y + 150);
+    await page.mouse.up();
+
+    await expect(canvas).toBeVisible();
+  });
+
+  test('Eraser functionality', async ({ page }) => {
+    await page.goto('/');
+
+    // First draw a rectangle
+    const rectangleBtn = page.locator('[aria-label="Rectangle"]');
+    await rectangleBtn.click();
+
+    const canvas = page.locator('canvas');
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('Canvas not visible');
+
+    await page.mouse.move(box.x + 100, box.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 300, box.y + 300);
+    await page.mouse.up();
+
+    // Now select Eraser
+    const eraserBtn = page.locator('[aria-label="Eraser"]');
+    await eraserBtn.click();
+
+    // Click on the rectangle we just drew
+    await page.mouse.move(box.x + 150, box.y + 150);
+    await page.mouse.down();
+    await page.mouse.up();
+
+    await expect(canvas).toBeVisible();
+  });
+  test('Export Image functionality', async ({ page }) => {
+    await page.goto('/');
+
+    // Wait for Export button to be visible
+    const exportBtn = page.getByRole('button', { name: 'Export' });
+    await expect(exportBtn).toBeVisible();
+
+    // Click Export
+    await exportBtn.click();
+
+    // Verify dialog appears
+    await expect(page.getByText('Export Image')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Download' })).toBeVisible();
+    
+    // Close dialog
+    await page.keyboard.press('Escape');
+  });
+
+  test('Settings toggle functionality', async ({ page }) => {
+    await page.goto('/');
+
+    const settingsBtn = page.getByRole('button', { name: 'Settings' });
+    await expect(settingsBtn).toBeVisible();
+
+    // Click Settings
+    await settingsBtn.click();
+
+    // Look for a setting that should appear, e.g. "Background" or "Grid"
+    await expect(page.getByText('Canvas Settings')).toBeVisible();
   });
 });
