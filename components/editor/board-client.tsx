@@ -461,7 +461,7 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
 		const { offsetX, offsetY } = e.nativeEvent;
 		if (socketRef.current && liveSession?.id && sessionUserName) {
-			socketRef.current.emit("cursor-move", { boardId, sessionId: liveSession.id, x: offsetX, y: offsetY, userName: sessionUserName });
+			socketRef.current.emit("cursor-move", { boardId: boardIdState, sessionId: liveSession.id, x: offsetX, y: offsetY, userName: sessionUserName });
 		}
 		if (!isDrawing) {
 			return;
