@@ -1,6 +1,7 @@
 "use client";
 import { useLayoutEffect, useRef, useState, useTransition, useEffect } from "react";
-import { ProjectSidebar, type LiveSession } from "@/components/editor/project-sidebar";
+import { io, type Socket } from "socket.io-client";
+import { ProjectSidebar, type LiveSession, type CollaborationPresence } from "@/components/editor/project-sidebar";
 import { ProjectToolbar } from "@/components/editor/project-toolbar";
 import { CanvasSettingsProvider, useCanvasSettings } from "@/components/editor/canvas-settings-provider";
 import { saveBoardState, createLiveSession, joinLiveSession, stopLiveSession, getActiveSession } from "@/actions/board";
@@ -34,7 +35,14 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	const [editingElementId, setEditingElementId] = useState<number | null>(null);
 	const [textInputValue, setTextInputValue] = useState("");
 	const [liveSession, setLiveSession] = useState<LiveSession | null>(null);
-	const [sessionUserName, setSessionUserName] = useState("");
+	const [sessionUserName, setSessionUserName] = useState(() => {
+		const randomName = `Guest-${Math.random().toString(36).slice(2, 8)}`;
+		return randomName;
+	});
+	const [presence, setPresence] = useState<CollaborationPresence[]>([]);
+	const [connectionStatus, setConnectionStatus] = useState<"connecting" | "connected" | "offline">("connecting");
+	const [socketId, setSocketId] = useState<string | null>(null);
+	const socketRef = useRef<Socket | null>(null);
 	const { settings } = useCanvasSettings();
 	const { resolvedTheme } = useTheme();
 	const strokeColor = getContrastingStrokeColor(settings.background, resolvedTheme);
@@ -52,7 +60,98 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 		}).catch(console.error);
 	}, [boardId]);
 
+	useEffect(() => {
+		if (!liveSession?.id || !sessionUserName) {
+			console.log("socket effect skipped", {
+				hasLiveSession: Boolean(liveSession?.id),
+				hasSessionUserName: Boolean(sessionUserName),
+				boardId,
+			});
+			if (socketRef.current) {
+				socketRef.current.emit("leave-board", { boardId });
+				socketRef.current.disconnect();
+				socketRef.current = null;
+			}
+			return;
+		}
+
+		const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL ??
+			(window.location.hostname === "localhost" ? "http://localhost:3001" : `http://${window.location.hostname}:3001`);
+		console.log("socket attempting connection", { socketUrl, boardId, sessionId: liveSession.id, userName: sessionUserName });
+		const socket = io(socketUrl, {
+			transports: ["websocket", "polling"],
+			reconnection: true,
+		});
+		socketRef.current = socket;
+
+		socket.on("connect", () => {
+			console.log("socket connected", { socketId: socket.id, boardId, sessionId: liveSession.id });
+			setSocketId(socket.id ?? null);
+			setConnectionStatus("connected");
+			socket.emit("join-board", {
+				boardId,
+				userName: sessionUserName,
+				sessionId: liveSession.id,
+			});
+		});
+
+		socket.on("connect_error", (error) => {
+			console.error("socket connection error", { socketUrl, message: error.message, name: error.name, boardId });
+			setConnectionStatus("offline");
+		});
+
+		socket.on("disconnect", (reason) => {
+			console.log("socket disconnected", { reason, boardId, socketId: socket.id });
+			setConnectionStatus("offline");
+		});
+
+		socket.on("board-state", (payload: { boardId?: string; elements?: BoardElement[] }) => {
+			if (payload.boardId === boardId && Array.isArray(payload.elements)) {
+				setElements(payload.elements);
+			}
+		});
+
+		socket.on("board-update", (payload: { boardId?: string; elements?: BoardElement[] }) => {
+			if (payload.boardId === boardId && Array.isArray(payload.elements)) {
+				setElements(payload.elements);
+			}
+		});
+
+		socket.on("presence-update", (payload: { boardId?: string; participants?: CollaborationPresence[] }) => {
+			if (payload.boardId === boardId) {
+				setPresence(payload.participants ?? []);
+			}
+		});
+
+		socket.on("cursor-update", (payload: { userId: string; name: string; color: string; x: number; y: number }) => {
+			setPresence((current) => {
+				const existing = current.find((participant) => participant.id === payload.userId);
+				if (existing) {
+					return current.map((participant) =>
+						participant.id === payload.userId
+							? { ...participant, name: payload.name, color: payload.color, x: payload.x, y: payload.y, connected: true }
+							: participant,
+					);
+				}
+
+				return [
+					...current,
+					{ id: payload.userId, name: payload.name, color: payload.color, x: payload.x, y: payload.y, connected: true },
+				];
+			});
+		});
+
+		return () => {
+			socket.emit("leave-board", { boardId });
+			socket.disconnect();
+			socketRef.current = null;
+			setSocketId(null);
+			setPresence([]);
+		};
+	}, [boardId, liveSession?.id, sessionUserName]);
+
 	const handleStartSession = async (name: string): Promise<LiveSession | void> => {
+		setConnectionStatus("connecting");
 		const session = await createLiveSession(boardId, name);
 		setSessionUserName(name.trim());
 		setLiveSession(session);
@@ -63,6 +162,7 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	};
 
 	const handleJoinSession = async (name: string): Promise<LiveSession | void> => {
+		setConnectionStatus("connecting");
 		const sessionId = new URLSearchParams(window.location.search).get("session");
 		if (!sessionId) {
 			throw new Error("This share link is missing a session ID.");
@@ -76,10 +176,12 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	const handleStopSession = async () => {
 		const sessionId = liveSession?.id ?? new URLSearchParams(window.location.search).get("session");
 		if (!sessionId) {
+			setConnectionStatus("offline");
 			setLiveSession(null);
 			return;
 		}
 		await stopLiveSession(boardId, sessionUserName, sessionId);
+		setConnectionStatus("offline");
 		setLiveSession(null);
 		setSessionUserName("");
 		const nextUrl = new URL(window.location.href);
@@ -191,6 +293,9 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	function handleMouseUp() {
 		setIsDrawing(false);
 		if (editingElementId !== null) return;
+		if (socketRef.current && liveSession?.id) {
+			socketRef.current.emit("board-state-change", { boardId, elements });
+		}
 		startTransition(() => {
 			saveBoardState(boardId, elements).catch(console.error);
 		});
@@ -274,10 +379,13 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	}
 
 	function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
+		const { offsetX, offsetY } = e.nativeEvent;
+		if (socketRef.current && liveSession?.id && sessionUserName) {
+			socketRef.current.emit("cursor-move", { boardId, x: offsetX, y: offsetY, userName: sessionUserName });
+		}
 		if (!isDrawing) {
 			return;
 		}
-		const { offsetX, offsetY } = e.nativeEvent;
 		const actualX = offsetX - panOffset.x;
 		const actualY = offsetY - panOffset.y;
 
@@ -340,7 +448,6 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 	}
 
 
-
 	function handleTextBlur(e: React.FocusEvent<HTMLTextAreaElement>, id: number) {
 		const newText = e.target.value;
 		let updated: BoardElement[] = [];
@@ -354,14 +461,17 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			return updated;
 		});
 		setEditingElementId(prev => prev === id ? null : prev);
+		const nextElements = elements.map(el => {
+			if (el.id === id) {
+				return { ...el, text: newText };
+			}
+			return el;
+		});
+		if (socketRef.current && liveSession?.id) {
+			socketRef.current.emit("board-state-change", { boardId, elements: nextElements });
+		}
 		startTransition(() => {
-			const newElements = elements.map(el => {
-				if (el.id === id) {
-					return { ...el, text: newText };
-				}
-				return el;
-			});
-			saveBoardState(boardId, newElements).catch(console.error);
+			saveBoardState(boardId, nextElements).catch(console.error);
 		});
 	}
 
@@ -392,6 +502,9 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 					if (Array.isArray(parsed)) {
 						const validElements = parsed.filter(isBoardElement);
 						setElements(validElements);
+						if (socketRef.current && liveSession?.id) {
+							socketRef.current.emit("board-state-change", { boardId, elements: validElements });
+						}
 						startTransition(() => {
 							saveBoardState(boardId, validElements).catch(console.error);
 						});
@@ -407,6 +520,9 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 
 	function handleReset() {
 		setElements([]);
+		if (socketRef.current && liveSession?.id) {
+			socketRef.current.emit("board-state-change", { boardId, elements: [] });
+		}
 		startTransition(() => {
 			saveBoardState(boardId, []).catch(console.error);
 		});
@@ -537,14 +653,56 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 				onJoinSession={handleJoinSession}
 				onStopSession={handleStopSession}
 				liveSession={liveSession}
+				presence={presence}
+				connectionStatus={connectionStatus}
 			/>
+			{liveSession ? (() => {
+				const activeUsers = presence.length > 0 ? presence.length : liveSession.participants.length;
+				const activeUsersLabel = `${activeUsers} active user${activeUsers === 1 ? "" : "s"}`;
+
+				return (
+					<div className="fixed right-4 top-4 z-50 flex items-center gap-2">
+						<div className={[
+							"inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur-sm",
+							connectionStatus === "connected"
+								? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+								: connectionStatus === "offline"
+									? "border-destructive/30 bg-destructive/10 text-destructive"
+									: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+						].join(" ")}
+						>
+							<span className={[
+								"h-2 w-2 rounded-full",
+								connectionStatus === "connected"
+									? "bg-emerald-500"
+									: connectionStatus === "offline"
+										? "bg-destructive"
+										: "bg-amber-500",
+							].join(" ")} />
+							<span>
+								{connectionStatus === "connected"
+									? "Socket connected"
+									: connectionStatus === "offline"
+										? "Socket disconnected"
+										: "Socket connecting"}
+							</span>
+						</div>
+						<div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur-sm">
+							<span className="flex h-2 w-2 rounded-full bg-primary" />
+							{activeUsersLabel}
+						</div>
+					</div>
+				);
+			})() : null}
 			<ProjectToolbar action={action} setAction={setAction} />
 			<CanvasWrapper
 				canvasRef={canvasRef}
 				handleMouseUp={handleMouseUp}
 				handleMouseDown={handleMouseDown}
 				handleMouseMove={handleMouseMove}
-
+				presence={presence}
+				panOffset={panOffset}
+				socketId={socketId ?? undefined}
 			/>
 			{editingElementId && (
 				<TextEditorOverlay
@@ -629,26 +787,46 @@ function CanvasWrapper({
 	handleMouseUp,
 	handleMouseDown,
 	handleMouseMove,
-
+	presence,
+	panOffset,
+	socketId,
 }: {
 	canvasRef: React.RefObject<HTMLCanvasElement | null>;
 	handleMouseUp: () => void;
 	handleMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => void;
 	handleMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => void;
-
+	presence?: CollaborationPresence[];
+	panOffset?: { x: number; y: number };
+	socketId?: string;
 }) {
 	const { settings } = useCanvasSettings();
+	const remoteCursors = (presence ?? []).filter((cursor) => cursor.id !== socketId && cursor.connected);
 
 	return (
-		<div className="w-full flex-1" style={{ backgroundColor: settings.background }}>
+		<div className="relative w-full flex-1" style={{ backgroundColor: settings.background }}>
 			<canvas
 				className="w-full h-full"
 				ref={canvasRef}
 				onMouseUp={handleMouseUp}
 				onMouseDown={handleMouseDown}
 				onMouseMove={handleMouseMove}
-
 			/>
+			<div className="pointer-events-none absolute inset-0 z-10">
+				{remoteCursors.map((cursor) => (
+					<div
+						key={cursor.id}
+						className="absolute -translate-x-1/2 -translate-y-1/2"
+						style={{ left: cursor.x + (panOffset?.x ?? 0), top: cursor.y + (panOffset?.y ?? 0) }}
+					>
+						<div className="flex items-center gap-2">
+							<span className="h-3.5 w-3.5 rounded-full border border-white shadow-sm" style={{ backgroundColor: cursor.color }} />
+							<span className="rounded-full border border-border bg-background/90 px-1.5 py-0.5 text-[10px] text-foreground shadow-sm">
+								{cursor.name}
+							</span>
+						</div>
+					</div>
+				))}
+			</div>
 		</div>
 	);
 }

@@ -48,6 +48,15 @@ export type LiveParticipant = {
   joinedAt: string;
 };
 
+export type CollaborationPresence = {
+  id: string;
+  name: string;
+  color: string;
+  x: number;
+  y: number;
+  connected: boolean;
+};
+
 export type LiveSession = {
   id: string;
   displayName: string;
@@ -65,6 +74,8 @@ export function ProjectSidebar({
   onJoinSession,
   onStopSession,
   liveSession,
+  presence,
+  connectionStatus,
 }: {
   onExport?: () => void;
   onImport?: () => void;
@@ -74,6 +85,8 @@ export function ProjectSidebar({
   onJoinSession?: (name: string) => Promise<LiveSession | void>;
   onStopSession?: () => Promise<void> | void;
   liveSession?: LiveSession | null;
+  presence?: CollaborationPresence[];
+  connectionStatus?: "connecting" | "connected" | "offline";
 }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = React.useState(false);
@@ -86,6 +99,17 @@ export function ProjectSidebar({
   const { Canvas: QRCodeCanvas } = useQRCode();
   const hasSessionQuery = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("session");
   const isJoiningViaLink = Boolean(hasSessionQuery && !liveSession);
+  const collaboratorList = React.useMemo(() => {
+    if (presence && presence.length > 0) {
+      return presence.map((participant) => ({
+        name: participant.name,
+        role: "guest" as const,
+        joinedAt: new Date().toISOString(),
+      }));
+    }
+
+    return liveSession?.participants ?? [];
+  }, [liveSession, presence]);
 
   const handleSessionCopy = React.useCallback(async () => {
     if (!liveSession?.link) return;
@@ -343,13 +367,28 @@ export function ProjectSidebar({
               </div>
 
               <div className="space-y-2">
-                <div className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                  Active members
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    Active members
+                  </div>
+                  <div className={cn(
+                    "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium uppercase tracking-[0.16em]",
+                    connectionStatus === "connected" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" :
+                      connectionStatus === "offline" ? "border-destructive/30 bg-destructive/10 text-destructive" :
+                        "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  )}>
+                    <span className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      connectionStatus === "connected" ? "bg-emerald-500" :
+                        connectionStatus === "offline" ? "bg-destructive" : "bg-amber-500"
+                    )} />
+                    {connectionStatus === "connected" ? "Live" : connectionStatus === "offline" ? "Offline" : "Syncing"}
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {liveSession.participants.length > 0 ? (
-                    liveSession.participants.map((participant) => (
-                      <div key={`${participant.name}-${participant.joinedAt}`} className="flex items-center gap-2 rounded-full border bg-background px-2 py-1 text-xs">
+                  {collaboratorList.length > 0 ? (
+                    collaboratorList.map((participant, index) => (
+                      <div key={`${participant.name}-${participant.joinedAt ?? index}`} className="flex items-center gap-2 rounded-full border bg-background px-2 py-1 text-xs">
                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
                           {getInitials(participant.name)}
                         </span>

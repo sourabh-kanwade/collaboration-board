@@ -13,6 +13,13 @@ change.
 
 ## Completed
 
+- Real-time Socket.IO room sync for board state and cursors is connected to the client
+- Live collaboration presence status and remote cursor overlays are displayed in the editor UI
+- Collaboration session metadata remains tied to the active board and room
+- Board updates are propagated across connected users without a page refresh
+- Session lifecycle and join state are managed from the existing share-link flow
+- Socket startup was corrected so the browser uses a stable socket URL and the Socket.IO server starts with the app for local development
+
 - Project Sidebar (`components/editor/project-sidebar.tsx`)
 - Editor Tool Bar (`components/editor/project-toolbar.tsx`) and Database auto-save
 - Export Image functionality with preview modal (PNG, SVG, Clipboard) in `BoardClient` and `ProjectSidebar`
