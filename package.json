@@ -6,7 +6,7 @@
     "dev": "next dev & node server.js",
     "dev:socket": "node server.js",
     "socket": "node server.js",
-    "build": "next build",
+    "build": "prisma generate && prisma db push && next build",
     "start": "next start",
     "start:socket": "NODE_ENV=production node server.js",
     "lint": "eslint .",
