@@ -13,6 +13,7 @@ change.
 
 ## Completed
 
+- Standardized README.md with comprehensive project features, tech stack, installation, usage, and architecture details.
 - Browser-scoped board IDs are now generated and persisted via a cookie so each browser keeps its own unique board instead of sharing the default room
 - Refreshes no longer create a new board because the app reuses the stored browser board ID for the same browser session
 - Stale boards older than 30 days are pruned before board creation or save operations, preventing the database from accumulating unused boards
