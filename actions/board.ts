@@ -3,23 +3,6 @@
 import { createBrowserBoardId, isValidBrowserBoardId } from "@/lib/board-id";
 import { prisma } from "@/lib/db";
 
-const BOARD_STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
-
-async function pruneUnusedBoards() {
-  const cutoff = new Date(Date.now() - BOARD_STALE_AFTER_MS);
-  const result = await prisma.board.deleteMany({
-    where: {
-      updatedAt: {
-        lt: cutoff,
-      },
-    },
-  });
-
-  if (result.count > 0) {
-    console.log(`Deleted ${result.count} stale board(s) older than 30 days.`);
-  }
-}
-
 type SessionParticipant = {
   name: string;
   role: "host" | "guest";
@@ -33,11 +16,33 @@ export type LiveSessionRecord = {
   link: string;
   status: "active" | "stopped";
   participants: SessionParticipant[];
+  hostToken?: string;
 };
 
-export async function getDefaultBoard() {
-  await pruneUnusedBoards();
+export async function generateHostToken() {
+  return crypto.randomUUID();
+}
 
+export async function validateSessionStopAuthorization({
+  sessionHostToken,
+  providedHostToken,
+}: {
+  sessionHostToken?: string | null;
+  providedHostToken?: string | null;
+}) {
+  const sanitizedSessionToken =
+    typeof sessionHostToken === "string" ? sessionHostToken.trim() : "";
+  const sanitizedProvidedToken =
+    typeof providedHostToken === "string" ? providedHostToken.trim() : "";
+
+  if (!sanitizedSessionToken || !sanitizedProvidedToken) {
+    return false;
+  }
+
+  return sanitizedSessionToken === sanitizedProvidedToken;
+}
+
+export async function getDefaultBoard() {
   const boardId = createBrowserBoardId();
   if (isValidBrowserBoardId(boardId)) {
     return await ensureBoard(boardId);
@@ -49,6 +54,28 @@ export async function getDefaultBoard() {
 export async function getOrCreateBrowserBoard() {
   return await getDefaultBoard();
 }
+
+const normalizeUserId = (value: unknown): string => {
+  return typeof value === "string" ? value.trim() : "";
+};
+
+const isBoardOwnedByUser = (
+  board: { userId?: string | null } | null,
+  userId?: string,
+) => {
+  const normalizedBoardUserId = board?.userId?.trim() ?? "";
+  const normalizedUserId = normalizeUserId(userId);
+
+  if (!normalizedBoardUserId) {
+    return true;
+  }
+
+  if (!normalizedUserId) {
+    return false;
+  }
+
+  return normalizedBoardUserId === normalizedUserId;
+};
 
 export async function getBoardState(id: string) {
   const board = await ensureBoard(id);
@@ -68,13 +95,38 @@ export async function getBoardState(id: string) {
   return [];
 }
 
-export async function saveBoardState(id: string, elements: unknown) {
+export async function saveBoardState(
+  id: string,
+  elements: unknown,
+  userId?: string,
+) {
+  const normalizedUserId = normalizeUserId(userId);
+  const board = await prisma.board.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      userId: true,
+      elements: true,
+    },
+  });
+
+  if (!board) {
+    return { success: false, error: "Board not found." };
+  }
+
+  if (!isBoardOwnedByUser(board, normalizedUserId)) {
+    return { success: false, error: "You do not own this board." };
+  }
+
   try {
-    await pruneUnusedBoards();
     await prisma.board.update({
       where: { id },
-      // @ts-expect-error - elements is unknown but Prisma accepts it as JSON
-      data: { elements },
+      data: {
+        elements: elements as never,
+        ...(board.userId || normalizedUserId
+          ? { userId: board.userId || normalizedUserId }
+          : {}),
+      },
     });
     return { success: true };
   } catch (error) {
@@ -83,20 +135,38 @@ export async function saveBoardState(id: string, elements: unknown) {
   }
 }
 
-export async function ensureBoard(id: string) {
-  await pruneUnusedBoards();
-
+export async function ensureBoard(id: string, userId?: string) {
+  const normalizedUserId = normalizeUserId(userId);
   const existingBoard = await prisma.board.findUnique({
     where: { id },
+    select: {
+      id: true,
+      userId: true,
+      elements: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
 
   if (existingBoard) {
+    if (!isBoardOwnedByUser(existingBoard, normalizedUserId)) {
+      throw new Error("You do not own this board.");
+    }
+
+    if (!existingBoard.userId && normalizedUserId) {
+      return await prisma.board.update({
+        where: { id },
+        data: { userId: normalizedUserId },
+      });
+    }
+
     return existingBoard;
   }
 
   return await prisma.board.create({
     data: {
       id,
+      userId: normalizedUserId,
       elements: [],
     },
   });
@@ -133,6 +203,7 @@ function serializeSession(session: {
   status: string;
   link: string;
   participants: unknown;
+  hostToken?: string | null;
 }): LiveSessionRecord {
   return {
     id: session.id,
@@ -141,6 +212,8 @@ function serializeSession(session: {
     status: session.status === "stopped" ? "stopped" : "active",
     link: session.link,
     participants: normalizeParticipants(session.participants),
+    hostToken:
+      typeof session.hostToken === "string" ? session.hostToken : undefined,
   };
 }
 
@@ -162,6 +235,18 @@ export async function getActiveSession(boardId?: string, sessionId?: string) {
           ...(boardId ? { boardId } : {}),
           status: "active",
         },
+        select: {
+          id: true,
+          boardId: true,
+          displayName: true,
+          status: true,
+          link: true,
+          participants: true,
+          hostToken: true,
+          userId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       })
     : await prisma.session.findFirst({
         where: {
@@ -169,6 +254,18 @@ export async function getActiveSession(boardId?: string, sessionId?: string) {
           status: "active",
         },
         orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          boardId: true,
+          displayName: true,
+          status: true,
+          link: true,
+          participants: true,
+          hostToken: true,
+          userId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
 
   if (!session || session.status === "stopped") {
@@ -178,13 +275,20 @@ export async function getActiveSession(boardId?: string, sessionId?: string) {
   return serializeSession(session);
 }
 
-export async function createLiveSession(boardId: string, displayName: string) {
+export async function createLiveSession(
+  boardId: string,
+  displayName: string,
+  userId?: string,
+) {
   const cleanName = displayName.trim();
+  const normalizedUserId = normalizeUserId(userId);
   if (!cleanName) {
     throw new Error("Please enter a display name.");
   }
 
-  await ensureBoard(boardId);
+  await ensureBoard(boardId, normalizedUserId);
+
+  const hostToken = await generateHostToken();
 
   const existingSession = await prisma.session.findFirst({
     where: {
@@ -192,6 +296,18 @@ export async function createLiveSession(boardId: string, displayName: string) {
       status: "active",
     },
     orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      boardId: true,
+      displayName: true,
+      status: true,
+      link: true,
+      participants: true,
+      hostToken: true,
+      userId: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
 
   if (existingSession) {
@@ -205,6 +321,7 @@ export async function createLiveSession(boardId: string, displayName: string) {
       const updatedSession = await prisma.session.update({
         where: { id: existingSession.id },
         data: {
+          userId: existingSession.userId || normalizedUserId,
           participants: [
             ...participants,
             {
@@ -213,20 +330,26 @@ export async function createLiveSession(boardId: string, displayName: string) {
               joinedAt: new Date().toISOString(),
             },
           ],
+          hostToken,
         },
       });
       return serializeSession(updatedSession);
     }
 
-    return serializeSession(existingSession);
+    return serializeSession({
+      ...existingSession,
+      hostToken: existingSession.hostToken ?? hostToken,
+    });
   }
 
   const session = await prisma.session.create({
     data: {
       boardId,
+      userId: normalizedUserId,
       displayName: cleanName,
       status: "active",
       link: "",
+      hostToken,
       participants: [
         {
           name: cleanName,
@@ -251,8 +374,10 @@ export async function joinLiveSession(
   boardId: string,
   sessionId: string,
   displayName: string,
+  userId?: string,
 ) {
   const cleanName = displayName.trim();
+  const normalizedUserId = normalizeUserId(userId);
   if (!cleanName) {
     throw new Error("Please enter a display name.");
   }
@@ -262,6 +387,18 @@ export async function joinLiveSession(
       id: sessionId,
       boardId,
       status: "active",
+    },
+    select: {
+      id: true,
+      boardId: true,
+      displayName: true,
+      status: true,
+      link: true,
+      participants: true,
+      hostToken: true,
+      userId: true,
+      createdAt: true,
+      updatedAt: true,
     },
   });
 
@@ -282,6 +419,7 @@ export async function joinLiveSession(
   const updatedSession = await prisma.session.update({
     where: { id: session.id },
     data: {
+      userId: session.userId || normalizedUserId,
       displayName: session.displayName || cleanName,
       participants: nextParticipants,
     },
@@ -292,12 +430,12 @@ export async function joinLiveSession(
 
 export async function stopLiveSession(
   boardId: string,
-  callerName: string,
+  hostToken: string,
   sessionId?: string,
 ) {
-  const cleanCallerName = callerName.trim();
-  if (!cleanCallerName) {
-    throw new Error("A caller identity is required to stop the session.");
+  const cleanHostToken = hostToken.trim();
+  if (!cleanHostToken) {
+    throw new Error("A host token is required to stop the session.");
   }
 
   const activeSession = sessionId
@@ -307,6 +445,18 @@ export async function stopLiveSession(
           boardId,
           status: "active",
         },
+        select: {
+          id: true,
+          boardId: true,
+          displayName: true,
+          status: true,
+          link: true,
+          participants: true,
+          hostToken: true,
+          userId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       })
     : await prisma.session.findFirst({
         where: {
@@ -314,15 +464,30 @@ export async function stopLiveSession(
           status: "active",
         },
         orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          boardId: true,
+          displayName: true,
+          status: true,
+          link: true,
+          participants: true,
+          hostToken: true,
+          userId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
 
   if (!activeSession) {
     return null;
   }
 
-  if (
-    activeSession.displayName.toLowerCase() !== cleanCallerName.toLowerCase()
-  ) {
+  const isAuthorized = validateSessionStopAuthorization({
+    sessionHostToken: activeSession.hostToken,
+    providedHostToken: cleanHostToken,
+  });
+
+  if (!isAuthorized) {
     throw new Error("Only the session host can stop this session.");
   }
 

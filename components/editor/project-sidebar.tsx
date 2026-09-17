@@ -63,6 +63,7 @@ export type LiveSession = {
   link: string;
   status: "active" | "stopped";
   participants: LiveParticipant[];
+  hostToken?: string;
 };
 
 export function ProjectSidebar({

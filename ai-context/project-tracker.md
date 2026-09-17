@@ -37,6 +37,12 @@ change.
 - Top-right collaboration control now mirrors the sidebar: connected sessions show Stop session, while disconnected state shows Live Session
 - Undo and redo logic with `Ctrl+Z` and `Ctrl+Shift+Z`/`Ctrl+Y` keyboard shortcuts, synced across the live session
 - Selection flow logic supports visible dashed bounding boxes, drag-to-move handling, and delete-key removal for selected canvas elements, but the Select tool remains disabled on the toolbar and the flow is not currently exposed to end users from the UI
+- Fixed the room leave/disconnect cleanup vulnerability so a socket cannot wipe a board room unless it is a current participant, and room removal now cleans up every joined room instead of stopping after the first match
+- Removed board-pruning calls from hot request paths and added the Prisma index for `updatedAt` to support scheduled stale-board cleanup without table scans during saves
+- Added a cron-style stale-board cleanup route under `app/api/cron/prune-unused-boards/route.ts` using a shared `CRON_SECRET`/authorization check instead of running cleanup inline during board requests
+- Hardened Socket room authorization so `board-state-change`, `cursor-move`, and `leave-board` reject sockets that are not active members of the target room, preventing unauthorized state overwrites and member disconnect races
+- Tightened board ownership enforcement for both save operations and realtime mutations using authenticated user IDs and `userId` persistence on `Board`/`Session`
+- Verified the fix with the targeted real-time security regression tests covering room membership, disconnect cleanup, and ownership mismatch
 
 ## In Progress
 

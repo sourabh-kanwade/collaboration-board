@@ -25,6 +25,32 @@ export type BoardElement = {
 	x1: number; y1: number; x2: number; y2: number; type: string; points: Array<{ x: number; y: number }>; text?: string;
 };
 
+function throttle<T extends unknown[]>(callback: (...args: T) => void, wait: number) {
+	let lastCall = 0;
+	let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+	return (...args: T) => {
+		const now = Date.now();
+		const remaining = wait - (now - lastCall);
+
+		if (remaining <= 0) {
+			lastCall = now;
+			callback(...args);
+			return;
+		}
+
+		if (timeoutId) {
+			return;
+		}
+
+		timeoutId = setTimeout(() => {
+			timeoutId = null;
+			lastCall = Date.now();
+			callback(...args);
+		}, remaining);
+	};
+}
+
 export function BoardClient({ initialElements, boardId }: { initialElements: BoardElement[], boardId: string }) {
 	return (
 		<CanvasSettingsProvider>
@@ -34,6 +60,7 @@ export function BoardClient({ initialElements, boardId }: { initialElements: Boa
 }
 
 const SESSION_NAME_STORAGE_KEY = "collab-board-session-name";
+const SESSION_HOST_TOKEN_STORAGE_KEY = "collab-board-session-host-token";
 
 function BoardEditor({ initialElements, boardId }: { initialElements: BoardElement[], boardId: string }) {
 	const [boardIdState, setBoardIdState] = useState<string>(() => {
@@ -259,6 +286,10 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 		const cleanedName = name.trim() || sessionUserName.trim() || "Guest";
 		setConnectionStatus("connecting");
 		const session = await createLiveSession(boardIdState, cleanedName);
+		const hostToken = session.hostToken ?? "";
+		if (hostToken) {
+			window.localStorage.setItem(SESSION_HOST_TOKEN_STORAGE_KEY, hostToken);
+		}
 		setBoardIdState(session.boardId);
 		setSessionUserName(cleanedName);
 		setLiveSession(session);
@@ -289,7 +320,9 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			setLiveSession(null);
 			return;
 		}
-		await stopLiveSession(boardIdState, sessionUserName, sessionId);
+		const hostToken = window.localStorage.getItem(SESSION_HOST_TOKEN_STORAGE_KEY) ?? "";
+		await stopLiveSession(boardIdState, hostToken, sessionId);
+		window.localStorage.removeItem(SESSION_HOST_TOKEN_STORAGE_KEY);
 		setConnectionStatus("offline");
 		setLiveSession(null);
 		setSessionUserName("");
@@ -508,11 +541,34 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 
 	}
 
+	const cursorMoveEmitterRef = useRef(
+		throttle((x: number, y: number) => {
+			const socket = socketRef.current;
+			if (!socket) {
+				return;
+			}
+
+			const boardId = boardIdState;
+			const sessionId = liveSession?.id;
+			const userName = sessionUserName;
+
+			if (!boardId || !sessionId || !userName) {
+				return;
+			}
+
+			socket.emit("cursor-move", {
+				boardId,
+				sessionId,
+				x,
+				y,
+				userName,
+			});
+		}, 32),
+	);
+
 	function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
 		const { offsetX, offsetY } = e.nativeEvent;
-		if (socketRef.current && liveSession?.id && sessionUserName) {
-			socketRef.current.emit("cursor-move", { boardId: boardIdState, sessionId: liveSession.id, x: offsetX, y: offsetY, userName: sessionUserName });
-		}
+		cursorMoveEmitterRef.current(offsetX, offsetY);
 		if (!isDrawing) {
 			return;
 		}
