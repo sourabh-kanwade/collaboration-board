@@ -52,7 +52,7 @@ These rules are **always enforced**. Each links to a file with Incorrect/Correct
 ### Component Structure → [composition.md](./rules/composition.md)
 
 - **Items always inside their Group.** `SelectItem` → `SelectGroup`. `DropdownMenuItem` → `DropdownMenuGroup`. `CommandItem` → `CommandGroup`.
-- **Use `asChild` (radix) or `render` (base) for custom triggers.** Check `base` field from `npx shadcn@latest info`. → [base-vs-radix.md](./rules/base-vs-radix.md)
+- **Use `asChild` for Radix or `render` for Base UI for custom triggers.** Check the `base` field from `npx shadcn@latest info`. React Aria uses its own supported composition pattern when available, but this rule is specifically about Radix and Base UI composition. → [base-vs-radix.md](./rules/base-vs-radix.md)
 - **Dialog, Sheet, and Drawer always need a Title.** `DialogTitle`, `SheetTitle`, `DrawerTitle` required for accessibility. Use `className="sr-only"` if visually hidden.
 - **Use full Card composition.** `CardHeader`/`CardTitle`/`CardDescription`/`CardContent`/`CardFooter`. Don't dump everything in `CardContent`.
 - **Button has no `isPending`/`isLoading`.** Compose with `Spinner` + `data-icon` + `disabled`.
@@ -137,7 +137,7 @@ These are the most common patterns that differentiate correct shadcn/ui code. Fo
 | Data display               | `Table`, `Card`, `Badge`, `Avatar`                                                                  |
 | Navigation                 | `Sidebar`, `NavigationMenu`, `Breadcrumb`, `Tabs`, `Pagination`                                     |
 | Overlays                   | `Dialog` (modal), `Sheet` (side panel), `Drawer` (bottom sheet), `AlertDialog` (confirmation)       |
-| Feedback                   | `toast` (Base UI), `sonner` (Radix/Aria), `Alert`, `Progress`, `Skeleton`, `Spinner`                 |
+| Feedback                   | `toast` (Base UI), `sonner` (Radix/Aria), `Alert`, `Progress`, `Skeleton`, `Spinner`                |
 | Command palette            | `Command` inside `Dialog`                                                                           |
 | Charts                     | `Chart` (wraps Recharts)                                                                            |
 | Layout                     | `Card`, `Separator`, `Resizable`, `ScrollArea`, `Accordion`, `Collapsible`                          |

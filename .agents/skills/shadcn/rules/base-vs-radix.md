@@ -47,20 +47,23 @@ This applies to all trigger and close components: `DialogTrigger`, `SheetTrigger
 
 ## Button / trigger as non-button element (base only)
 
-When `render` changes an element to a non-button (`<a>`, `<span>`), add `nativeButton={false}`.
+When `render` changes an element to a non-button (`<span>`, `<div>`, etc.), prefer a real button or a direct anchor for link styling instead of rendering a link through `Button`.
 
-**Incorrect (base):** missing `nativeButton={false}`.
+**Correct (base):** keep the action as a button when it is a button.
 
 ```tsx
-<Button render={<a href="/docs" />}>Read the docs</Button>
+<Button>Read the docs</Button>
 ```
 
-**Correct (base):**
+**Link styling (base):** style a direct anchor element instead of using `Button` as a link.
 
 ```tsx
-<Button render={<a href="/docs" />} nativeButton={false}>
+<a
+  href="/docs"
+  className="text-primary underline underline-offset-4 hover:text-primary/80"
+>
   Read the docs
-</Button>
+</a>
 ```
 
 **Correct (radix):**
@@ -75,9 +78,7 @@ Same for triggers whose `render` is not a `Button`:
 
 ```tsx
 // base.
-<PopoverTrigger render={<InputGroupAddon />} nativeButton={false}>
-  Pick date
-</PopoverTrigger>
+<PopoverTrigger render={<InputGroupAddon />}>Pick date</PopoverTrigger>
 ```
 
 ---
@@ -90,7 +91,9 @@ Same for triggers whose `render` is not a `Button`:
 
 ```tsx
 <Select>
-  <SelectTrigger><SelectValue placeholder="Select a fruit" /></SelectTrigger>
+  <SelectTrigger>
+    <SelectValue placeholder="Select a fruit" />
+  </SelectTrigger>
 </Select>
 ```
 
@@ -157,7 +160,9 @@ Base supports `multiple`, render-function children on `SelectValue`, and object 
 <Select items={items} multiple defaultValue={[]}>
   <SelectTrigger>
     <SelectValue>
-      {(value: string[]) => value.length === 0 ? "Select fruits" : `${value.length} selected`}
+      {(value: string[]) =>
+        value.length === 0 ? "Select fruits" : `${value.length} selected`
+      }
     </SelectValue>
   </SelectTrigger>
   ...

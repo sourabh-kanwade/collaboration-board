@@ -4,7 +4,7 @@ Configuration is read from `components.json`.
 
 > **IMPORTANT:** Always run commands using the project's package runner: `npx shadcn@latest`, `pnpm dlx shadcn@latest`, or `bunx --bun shadcn@latest`. Check `packageManager` from project context to choose the right one. Examples below use `npx shadcn@latest` but substitute the correct runner for the project.
 
-> **IMPORTANT:** Only use the flags documented below. Do not invent or guess flags — if a flag isn't listed here, it doesn't exist. The CLI auto-detects the package manager from the project's lockfile; there is no `--package-manager` flag.
+> **IMPORTANT:** Only use the flags documented below, including `--base` for init. Do not invent or guess flags — if a flag isn't listed here, it doesn't exist. The CLI auto-detects the package manager from the project's lockfile; there is no `--package-manager` flag.
 
 ## Contents
 
@@ -28,6 +28,7 @@ Initializes shadcn/ui in an existing project or creates a new project (when `--n
 | Flag                    | Short | Description                                               | Default |
 | ----------------------- | ----- | --------------------------------------------------------- | ------- |
 | `--template <template>` | `-t`  | Template (next, start, vite, next-monorepo, react-router) | —       |
+| `--base <base>`         |       | Primitive library (`base` or `radix`)                     | current |
 | `--preset [name]`       | `-p`  | Preset configuration (named, code, or URL)                | —       |
 | `--yes`                 | `-y`  | Skip confirmation prompt                                  | `true`  |
 | `--defaults`            | `-d`  | Use defaults (`--template=next --preset=base-nova`)       | `false` |
@@ -138,14 +139,14 @@ Supports namespaces (`@acme`), public GitHub registry sources (`owner/repo`),
 and registry catalog URLs. Without `-q`, lists all items. When no registries are
 passed, searches every registry configured in `components.json`.
 
-| Flag                | Short | Description                                       | Default |
-| ------------------- | ----- | ------------------------------------------------- | ------- |
-| `--query <query>`   | `-q`  | Search query                                      | —       |
+| Flag                | Short | Description                                                       | Default |
+| ------------------- | ----- | ----------------------------------------------------------------- | ------- |
+| `--query <query>`   | `-q`  | Search query                                                      | —       |
 | `--type <type>`     | `-t`  | Filter by item type (e.g. `ui`, `block`, `hook`); comma-separated | —       |
-| `--limit <number>`  | `-l`  | Max items to display                              | `100`   |
-| `--offset <number>` | `-o`  | Items to skip                                     | `0`     |
-| `--json`            |       | Output as JSON                                    | `false` |
-| `--cwd <cwd>`       | `-c`  | Working directory                                 | current |
+| `--limit <number>`  | `-l`  | Max items to display                                              | `100`   |
+| `--offset <number>` | `-o`  | Items to skip                                                     | `0`     |
+| `--json`            |       | Output as JSON                                                    | `false` |
+| `--cwd <cwd>`       | `-c`  | Working directory                                                 | current |
 
 ### `view` — View item details
 

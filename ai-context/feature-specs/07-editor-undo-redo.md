@@ -11,13 +11,12 @@ Requirements:
 - Clear the `future` stack whenever a new canvas action is performed.
 - Bind keyboard events to the window or document:
   - `Ctrl+Z` (or `Cmd+Z` on Mac) for Undo:
-    - Pop the most recent state from `history`.
-    - Push the current state to `future`.
-    - Update the `elements` array with the popped state.
+    - Move the current state to `future`.
+    - Apply the new last entry from `history` by updating `elements`.
   - `Ctrl+Shift+Z` or `Ctrl+Y` (or `Cmd+Shift+Z` / `Cmd+Y` on Mac) for Redo:
     - Pop the most recent state from `future`.
-    - Push the current state to `history`.
-    - Update the `elements` array with the popped state.
+    - Append that state to `history`.
+    - Apply the popped state to `elements`.
 - Make sure undo and redo trigger the necessary state sync via Socket.IO so other collaborators see the undone/redone changes.
 
 ### Check when done

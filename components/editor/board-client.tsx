@@ -209,10 +209,12 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 
 		socket.on("board-update", (payload: { boardId?: string; sessionId?: string; elements?: BoardElement[] }) => {
 			if ((payload.boardId === boardIdState || payload.sessionId === liveSession?.id) && Array.isArray(payload.elements)) {
-				setElements(payload.elements);
+				const nextElements = payload.elements;
+				setElements(nextElements);
 				setHistory(prev => {
-					if (prev.length === 0 || prev[prev.length - 1] !== payload.elements) {
-						return [...prev, payload.elements!];
+					const latest = prev[prev.length - 1];
+					if (!latest || JSON.stringify(latest) !== JSON.stringify(nextElements)) {
+						return [...prev, nextElements];
 					}
 					return prev;
 				});
@@ -413,13 +415,13 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 		setIsDrawing(false);
 		if (editingElementId !== null) return;
 
-		setHistory(prev => {
-			if (prev.length === 0 || prev[prev.length - 1] !== elements) {
-				return [...prev, elements];
-			}
-			return prev;
-		});
-		setFuture([]);
+		const lastHistoryEntry = history[history.length - 1];
+		const hasStateChanged = !lastHistoryEntry || JSON.stringify(lastHistoryEntry) !== JSON.stringify(elements);
+
+		if (hasStateChanged) {
+			setHistory(prev => [...prev, elements]);
+			setFuture([]);
+		}
 
 		if (socketRef.current && liveSession?.id) {
 			socketRef.current.emit("board-state-change", { boardId: boardIdState, sessionId: liveSession.id, elements });
@@ -578,16 +580,13 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 
 	function handleTextBlur(e: React.FocusEvent<HTMLTextAreaElement>, id: number) {
 		const newText = e.target.value;
-		let updated: BoardElement[] = [];
-		setElements(prev => {
-			updated = prev.map(el => {
-				if (el.id === id) {
-					return { ...el, text: newText };
-				}
-				return el;
-			});
-			return updated;
+		const updated = elements.map(el => {
+			if (el.id === id) {
+				return { ...el, text: newText };
+			}
+			return el;
 		});
+		setElements(updated);
 		setEditingElementId(prev => prev === id ? null : prev);
 
 		setHistory(prev => [...prev, updated]);
@@ -708,10 +707,10 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			const targetTag = (e.target as HTMLElement | null)?.tagName;
 			const isTypingTarget = targetTag === 'INPUT' || targetTag === 'TEXTAREA' || (e.target instanceof HTMLElement && e.target.isContentEditable);
 
-			if (isCtrlOrCmd && isZ && !isShift) {
+			if (!isTypingTarget && isCtrlOrCmd && isZ && !isShift) {
 				e.preventDefault();
 				handleUndo();
-			} else if ((isCtrlOrCmd && isZ && isShift) || (isCtrlOrCmd && isY)) {
+			} else if (!isTypingTarget && ((isCtrlOrCmd && isZ && isShift) || (isCtrlOrCmd && isY))) {
 				e.preventDefault();
 				handleRedo();
 			} else if (!isTypingTarget && (e.key === 'Delete' || e.key === 'Backspace') && selectedElementId !== null) {
@@ -1062,8 +1061,10 @@ function CanvasWrapper({
 
 function getElementBounds(element: { x1: number, y1: number, x2: number, y2: number, type: string, points: Array<{ x: number, y: number }>, text?: string }) {
 	if (element.type === 'text') {
-		const textWidth = element.text ? Math.max(50, element.text.length * 15) : 50;
-		const textHeight = element.text ? element.text.split('\n').length * 24 : 24;
+		const lines = element.text ? element.text.split('\n') : [];
+		const longestLineLength = lines.reduce((maxLength, line) => Math.max(maxLength, line.length), 0);
+		const textWidth = Math.max(50, longestLineLength * 15);
+		const textHeight = element.text ? lines.length * 24 : 24;
 		return {
 			minX: element.x1,
 			minY: element.y1,

@@ -36,7 +36,7 @@ change.
 - Session hydration and stop failures are reported without closing the dialog
 - Top-right collaboration control now mirrors the sidebar: connected sessions show Stop session, while disconnected state shows Live Session
 - Undo and redo logic with `Ctrl+Z` and `Ctrl+Shift+Z`/`Ctrl+Y` keyboard shortcuts, synced across the live session
-- Selection flow now supports visible dashed bounding boxes, drag-to-move handling, and delete-key removal for selected canvas elements
+- Selection flow logic supports visible dashed bounding boxes, drag-to-move handling, and delete-key removal for selected canvas elements, but the Select tool remains disabled on the toolbar and the flow is not currently exposed to end users from the UI
 
 ## In Progress
 
@@ -48,7 +48,7 @@ change.
 
 ## Open Questions
 
-- Pan, Select, and Text tools are currently disabled on the toolbar. When should they be implemented?
+- Pan, Select, and Text tools are currently disabled on the toolbar; the selection flow exists in code but is unavailable from the UI until the Select tool is enabled.
 - Should we use a dynamic route (e.g. `/board/[id]`) for boards to support multiple distinct boards, since we currently use a single default board ID?
 
 ## Architecture Decisions
