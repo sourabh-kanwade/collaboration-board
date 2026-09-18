@@ -174,13 +174,18 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			}
 			return;
 		}
+		const ENV_SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.SOCKET_URL;
 
-		const socketUrl = process.env.SOCKET_URL ??
-			(window.location.hostname === "localhost" ? "http://localhost:3001" : `http://${window.location.hostname}:3001`);
+		const isLocal = window.location.hostname === "localhost";
+
+		// If on localhost, use local port 3001. Otherwise, use the production backend URL.
+		const socketUrl = isLocal ? "http://localhost:3001" : ENV_SOCKET_URL;
+
 		const socket = io(socketUrl, {
 			transports: ["websocket", "polling"],
 			reconnection: true,
-			secure: process.env.NODE_ENV === 'production' ? true : false
+
+			secure: !isLocal
 		});
 		socketRef.current = socket;
 
