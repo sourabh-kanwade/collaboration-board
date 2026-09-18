@@ -536,23 +536,16 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 				x1: actualX, y1: actualY, x2: actualX, y2: actualY, points: []
 			}
 		}
-		setElements((prevElements) => [...prevElements, newElement])
-		setIsDrawing(true)
-
+		setElements((prevElements) => [...prevElements, newElement]);
+		setIsDrawing(true);
 	}
 
-	const cursorMoveEmitterRef = useRef(
-		throttle((x: number, y: number) => {
+	const cursorMoveEmitterRef = useRef<((x: number, y: number, boardId: string, sessionId: string, userName: string) => void) | null>(null);
+
+	useEffect(() => {
+		cursorMoveEmitterRef.current = throttle((x: number, y: number, boardId: string, sessionId: string, userName: string) => {
 			const socket = socketRef.current;
 			if (!socket) {
-				return;
-			}
-
-			const boardId = boardIdState;
-			const sessionId = liveSession?.id;
-			const userName = sessionUserName;
-
-			if (!boardId || !sessionId || !userName) {
 				return;
 			}
 
@@ -563,12 +556,22 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 				y,
 				userName,
 			});
-		}, 32),
-	);
+		}, 32);
+	}, []);
 
 	function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
 		const { offsetX, offsetY } = e.nativeEvent;
-		cursorMoveEmitterRef.current(offsetX, offsetY);
+
+		if (cursorMoveEmitterRef.current) {
+			const boardId = boardIdState;
+			const sessionId = liveSession?.id;
+			const userName = sessionUserName;
+
+			if (boardId && sessionId && userName) {
+				cursorMoveEmitterRef.current(offsetX, offsetY, boardId, sessionId, userName);
+			}
+		}
+
 		if (!isDrawing) {
 			return;
 		}
