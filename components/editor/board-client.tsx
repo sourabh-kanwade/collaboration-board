@@ -175,7 +175,7 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 			return;
 		}
 
-		const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL ??
+		const socketUrl = process.env.SOCKET_URL ??
 			(window.location.hostname === "localhost" ? "http://localhost:3001" : `http://${window.location.hostname}:3001`);
 		const socket = io(socketUrl, {
 			transports: ["websocket", "polling"],

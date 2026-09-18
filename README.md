@@ -49,7 +49,7 @@ A web-based collaborative whiteboard application allowing users to draw, add sha
 
    ```env
    DATABASE_URL="postgres://postgres:postgres@localhost:5432/collab-board"
-   NEXT_PUBLIC_SOCKET_URL="http://localhost:3001"
+   SOCKET_URL="http://localhost:3001"
    ```
 
 4. **Initialize the database**
