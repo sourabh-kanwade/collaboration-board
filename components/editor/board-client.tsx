@@ -180,6 +180,7 @@ function BoardEditor({ initialElements, boardId }: { initialElements: BoardEleme
 		const socket = io(socketUrl, {
 			transports: ["websocket", "polling"],
 			reconnection: true,
+			secure: process.env.NODE_ENV === 'production' ? true : false
 		});
 		socketRef.current = socket;
 
